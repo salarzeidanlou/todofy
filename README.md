@@ -13,7 +13,7 @@ Smart lists, labels, and reminders that actually notify you — even when it's t
 ![Preact](https://img.shields.io/badge/Preact-10-673AB8?style=flat-square&logo=preact&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)
 ![Rust](https://img.shields.io/badge/Rust-stable-000000?style=flat-square&logo=rust&logoColor=white)
-![License](https://img.shields.io/badge/license-MIT-6c7cff?style=flat-square)
+![License](https://img.shields.io/badge/license-source--available-6c7cff?style=flat-square)
 
 </div>
 
@@ -155,11 +155,18 @@ todofy/
 
 ## 🤝 Contributing
 
-Issues and pull requests are welcome! If you have an idea or found a bug, open an issue to start the conversation.
+Contributions are welcome — open an issue to report a bug or share an idea, or
+send a pull request. todofy is owned and maintained by Salar Zeidanlou; by
+contributing you agree that your changes are licensed to the project as
+described in the [LICENSE](LICENSE).
 
 ## 📄 License
 
-Released under the [MIT License](LICENSE).
+© 2026 Salar Zeidanlou. All rights reserved.
+
+Source-available: you may view the code and contribute to it, but it may not be
+used, copied, or redistributed on its own without prior written permission. See
+the [LICENSE](LICENSE) for the full terms.
 
 ---
 
