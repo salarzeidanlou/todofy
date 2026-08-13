@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "quickadd",
+  "description": "Capability for the Spotlight-style quick-add window",
+  "windows": ["quickadd"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-center",
+    "core:window:allow-set-focus"
+  ]
+}

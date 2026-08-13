@@ -1,0 +1,168 @@
+<div align="center">
+
+<img src="src-tauri/icons/128x128.png" width="96" height="96" alt="todofy logo" />
+
+# todofy
+
+**A modern, fast, and beautiful to‑do app for Linux.**
+
+Smart lists, labels, and reminders that actually notify you — even when it's tucked away in your tray.
+
+![Platform](https://img.shields.io/badge/platform-Linux-1a2029?style=flat-square&logo=linux&logoColor=white)
+![Tauri](https://img.shields.io/badge/Tauri-2.x-24C8DB?style=flat-square&logo=tauri&logoColor=white)
+![Preact](https://img.shields.io/badge/Preact-10-673AB8?style=flat-square&logo=preact&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![Rust](https://img.shields.io/badge/Rust-stable-000000?style=flat-square&logo=rust&logoColor=white)
+![License](https://img.shields.io/badge/license-MIT-6c7cff?style=flat-square)
+
+</div>
+
+---
+
+## ✨ Features
+
+- 🗓️ **Smart views** — *Today* (with overdue rollup), *Upcoming* (grouped by date), and *Inbox*
+- ⚡ **Global quick‑add** — hit **Ctrl+Alt+A** anywhere (even with todofy tucked in the tray) for a floating capture bar; type, press Enter, and you're back to what you were doing
+- ✍️ **Natural‑language quick‑add** — type *"pay rent friday 5pm #home p1"* and the date, time, priority, and label are parsed out live and shown as chips
+- ✋ **Drag‑and‑drop reordering** — grab any task and drop it exactly where you want; your manual order sticks
+- 📌 **Pinning** — pin any task to float it to the top of its group, with a dedicated *Pinboard* view
+- ✅ **Completed view** — every finished task, app-wide, newest first
+- 🏷️ **Labels** — create, rename, recolor (with a full custom color picker), and delete; a searchable Labels page plus per-label filtering
+- 📆 **Beautiful date & time picker** — click the month or year to jump anywhere in seconds
+- ⏰ **Reminders that reach you** — native desktop notifications fire **even when hidden in the tray**, plus in‑app toasts and one‑tap **snooze**
+- 🚩 **Priorities** — P1–P4 with color‑coded flags
+- 🌗 **Light & dark themes** — dark by default, remembers your choice
+- ⌨️ **Keyboard‑first** — add, navigate, complete, and edit without touching the mouse
+- 🪟 **System tray** — closes to tray and keeps running so reminders never miss
+- 🧭 **Collapsible sidebar** — go full or minimal
+- 💾 **Local‑first** — everything is stored in a local SQLite database; no account, no cloud, no tracking
+
+<div align="center">
+
+<!-- Add a screenshot at docs/screenshot.png to show it off -->
+<!-- ![todofy screenshot](docs/screenshot.png) -->
+
+</div>
+
+## 📦 Install
+
+Grab a package from the [Releases](../../releases) page, or build it yourself (see below).
+
+**AppImage** — portable, runs on any distro:
+```bash
+chmod +x todofy_1.2.0_amd64.AppImage
+./todofy_1.2.0_amd64.AppImage
+```
+
+**Debian / Ubuntu:**
+```bash
+sudo dpkg -i todofy_1.2.0_amd64.deb
+```
+
+**Fedora / RHEL / openSUSE:**
+```bash
+sudo rpm -i todofy-1.2.0-1.x86_64.rpm
+```
+
+> Your tasks live at `~/.local/share/com.unifybrowse.todofy/todofy.db`.
+
+## ⌨️ Keyboard shortcuts
+
+| Key | Action |
+| --- | --- |
+| `Ctrl`+`Alt`+`A` | Open the global quick‑add bar from anywhere (works app‑wide) |
+| `n` | Focus the quick‑add bar |
+| `j` / `↓` | Move to next task |
+| `k` / `↑` | Move to previous task |
+| `e` | Edit the selected task |
+| `c` / `Enter` | Complete / uncomplete the selected task |
+| `p` | Pin / unpin the selected task |
+| `Backspace` / `Delete` | Delete the selected task |
+| `Esc` | Close the detail panel / picker |
+
+## 🛠️ Build from source
+
+### Prerequisites
+
+- [Rust](https://rustup.rs/) (stable)
+- [Bun](https://bun.sh/)
+- System libraries for Tauri on Linux:
+
+```bash
+# Debian / Ubuntu
+sudo apt update
+sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
+  libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+```
+
+### Develop
+
+```bash
+bun install
+bun run tauri dev
+```
+
+### Build release bundles
+
+```bash
+bun run tauri build
+```
+
+Bundles are written to `src-tauri/target/release/bundle/` (`.deb`, `.rpm`, and `.AppImage`).
+
+### Regenerate the app icon
+
+```bash
+bunx tauri icon app-icon.svg
+```
+
+## 🧱 Tech stack
+
+| Layer | Choice |
+| --- | --- |
+| Shell | [Tauri 2](https://tauri.app) (Rust) |
+| UI | [Preact](https://preactjs.com) + TypeScript |
+| Styling | [Tailwind CSS 4](https://tailwindcss.com) with a custom design system |
+| State | [Zustand](https://github.com/pmndrs/zustand) |
+| Storage | SQLite via [rusqlite](https://github.com/rusqlite/rusqlite) |
+| Build | [Vite](https://vite.dev) + [Bun](https://bun.sh) |
+
+## 📁 Project structure
+
+```
+todofy/
+├── src/                    # Preact frontend
+│   ├── components/         # UI (Sidebar, TaskList, TaskDetail, DatePicker, …)
+│   ├── lib/                # dates, theme, keyboard, grouping helpers
+│   ├── store.ts            # Zustand store
+│   └── types.ts
+├── src-tauri/              # Rust backend
+│   └── src/
+│       ├── commands.rs     # task & label CRUD (Tauri commands)
+│       ├── db.rs           # SQLite schema & migrations
+│       ├── scheduler.rs    # background reminder notifications
+│       ├── tray.rs         # system tray
+│       └── lib.rs          # app setup
+└── app-icon.svg            # source for the app icon
+```
+
+## 🗺️ Roadmap
+
+- [x] Drag‑and‑drop reordering
+- [x] Natural‑language quick‑add (*"pay rent friday 5pm"*)
+- [ ] Recurring tasks
+- [ ] Search & filters
+
+## 🤝 Contributing
+
+Issues and pull requests are welcome! If you have an idea or found a bug, open an issue to start the conversation.
+
+## 📄 License
+
+Released under the [MIT License](LICENSE).
+
+---
+
+<div align="center">
+Made with ❤️ and Rust, for Linux.
+</div>

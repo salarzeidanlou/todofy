@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ *
+ * todofy design system — dark-first, modern, calm.
+ * Tailwind v4 @theme tokens map to `bg-surface`, `text-muted`, etc.
+ * ------------------------------------------------------------------ */
+@theme {
+  /* Neutrals (slate-ish, dark-first) */
+  --color-bg: #0e1116;
+  --color-surface: #161b22;
+  --color-surface-2: #1c232d;
+  --color-elevated: #222b36;
+  --color-border: #2a333f;
+  --color-border-strong: #3a4553;
+
+  /* Text */
+  --color-text: #e6edf3;
+  --color-muted: #9aa7b4;
+  --color-faint: #6b7885;
+
+  /* Brand / accent — a warm indigo, not neon */
+  --color-accent: #6c7cff;
+  --color-accent-hover: #7d8bff;
+  --color-accent-soft: #232a45;
+
+  /* Semantic */
+  --color-danger: #f2555a;
+  --color-warning: #f2b155;
+  --color-success: #4fd18b;
+
+  /* Priority colors */
+  --color-prio-1: #f2555a;
+  --color-prio-2: #f2b155;
+  --color-prio-3: #6c7cff;
+  --color-prio-4: #6b7885;
+
+  --radius-lg: 0.75rem;
+  --radius-md: 0.5rem;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, sans-serif;
+}
+
+/* Light theme override */
+:root[data-theme="light"] {
+  --color-bg: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-surface-2: #f0f2f5;
+  --color-elevated: #ffffff;
+  --color-border: #e3e7ec;
+  --color-border-strong: #d0d6dd;
+  --color-text: #1a2029;
+  --color-muted: #5b6773;
+  --color-faint: #8a95a1;
+  --color-accent-soft: #eaecff;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* Thin, unobtrusive scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 999px;
+}
+
+/* Subtle entrance for list items */
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-rise {
+  animation: fade-rise 0.18s ease-out;
+}
+
+@keyframes slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.animate-slide-left {
+  animation: slide-left 0.2s ease-out;
+}
