@@ -13,10 +13,14 @@ import { TaskList } from "./components/TaskList";
 import { TaskDetail } from "./components/TaskDetail";
 import { ReminderToasts } from "./components/ReminderToasts";
 import { ConfirmDialog } from "./components/ConfirmDialog";
+import { FocusWidget } from "./components/FocusWidget";
 import { ChevronLeftIcon, ChevronRightIcon } from "./components/Icons";
 
 export function App() {
   const load = useStore((s) => s.load);
+  const loadTimers = useStore((s) => s.loadTimers);
+  const refreshPomodoro = useStore((s) => s.refreshPomodoro);
+  const onTimersChanged = useStore((s) => s.onTimersChanged);
   const pushReminder = useStore((s) => s.pushReminder);
   const theme = useStore((s) => s.theme);
   const tasks = useStore((s) => s.tasks);
@@ -27,6 +31,7 @@ export function App() {
 
   useEffect(() => {
     load();
+    loadTimers();
     // Ask for desktop notification permission once, up front.
     (async () => {
       if (!(await isPermissionGranted())) {
@@ -40,9 +45,15 @@ export function App() {
     });
     // Refresh when a task is added from the quick-add window.
     const unAdded = listen("todo-added", () => load());
+    // The scheduler advanced the Pomodoro (e.g. a phase finished) — re-sync.
+    const unPomo = listen("pomodoro-updated", () => refreshPomodoro());
+    // A timer was started/stopped from the tray menu — re-sync all timer state.
+    const unTimers = listen("timers-changed", () => onTimersChanged());
     return () => {
       unlisten.then((off) => off());
       unAdded.then((off) => off());
+      unPomo.then((off) => off());
+      unTimers.then((off) => off());
     };
   }, []);
 
@@ -75,6 +86,7 @@ export function App() {
 
       <TaskList />
       <TaskDetail />
+      <FocusWidget />
       <ReminderToasts />
       <ConfirmDialog />
     </div>

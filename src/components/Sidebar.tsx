@@ -9,8 +9,8 @@ import {
   PinIcon,
   CheckCircleIcon,
   LabelIcon,
-  SunIcon,
-  MoonIcon,
+  SettingsIcon,
+  TimerIcon,
   Logo,
 } from "./Icons";
 
@@ -30,7 +30,7 @@ function sameView(a: ViewId, b: ViewId): boolean {
 }
 
 export function Sidebar() {
-  const { tasks, labels, view, setView, theme, toggleTheme, sidebarCollapsed } = useStore();
+  const { tasks, labels, view, setView, sidebarCollapsed, toggleFocus } = useStore();
   const [version, setVersion] = useState("");
 
   useEffect(() => {
@@ -63,11 +63,23 @@ export function Sidebar() {
         })}
 
         <button
-          onClick={toggleTheme}
-          title={theme === "dark" ? "Light mode" : "Dark mode"}
+          onClick={toggleFocus}
+          title="Focus timer"
           class="mt-auto grid h-9 w-9 place-items-center rounded-lg text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
         >
-          {theme === "dark" ? <SunIcon width={18} height={18} /> : <MoonIcon width={18} height={18} />}
+          <TimerIcon width={18} height={18} />
+        </button>
+
+        <button
+          onClick={() => setView({ kind: "settings" })}
+          title="Settings"
+          class={`grid h-9 w-9 place-items-center rounded-lg transition-colors ${
+            sameView(view, { kind: "settings" })
+              ? "bg-[var(--color-accent-soft)] text-[var(--color-accent)]"
+              : "text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
+          }`}
+        >
+          <SettingsIcon width={18} height={18} />
         </button>
       </aside>
     );
@@ -117,17 +129,28 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div class="mt-auto border-t border-[var(--color-border)] pt-3">
+      <div class="mt-auto flex flex-col gap-0.5 border-t border-[var(--color-border)] pt-3">
         <button
-          onClick={toggleTheme}
+          onClick={toggleFocus}
           class="flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-sm text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
         >
-          {theme === "dark" ? (
-            <SunIcon width={18} height={18} />
-          ) : (
-            <MoonIcon width={18} height={18} />
-          )}
-          {theme === "dark" ? "Light mode" : "Dark mode"}
+          <TimerIcon width={18} height={18} />
+          Focus timer
+        </button>
+        <button
+          onClick={() => setView({ kind: "settings" })}
+          class={`flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-colors ${
+            sameView(view, { kind: "settings" })
+              ? "bg-[var(--color-accent-soft)] text-[var(--color-text)]"
+              : "text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
+          }`}
+        >
+          <SettingsIcon
+            width={18}
+            height={18}
+            class={sameView(view, { kind: "settings" }) ? "text-[var(--color-accent)]" : ""}
+          />
+          Settings
         </button>
       </div>
     </aside>

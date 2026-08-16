@@ -1,9 +1,20 @@
 use rusqlite::{params, Connection};
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 /// Managed Tauri state: a single SQLite connection behind a mutex.
 /// The notification scheduler and the command handlers share this.
 pub struct Db(pub Mutex<Connection>);
+
+impl Db {
+    /// Borrow the connection. If a previous holder panicked while holding the
+    /// lock the mutex is poisoned; we recover the guard anyway rather than
+    /// cascading the panic to every later database call. Each command touches
+    /// the connection only briefly and leaves it in a consistent state, so the
+    /// data is safe to keep using.
+    pub fn conn(&self) -> MutexGuard<'_, Connection> {
+        self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
 
 /// Create the schema if it does not yet exist, then bring older
 /// databases up to date via `migrate`.
@@ -31,7 +42,8 @@ pub fn init(conn: &Connection) -> rusqlite::Result<()> {
             completed_at TEXT,
             order_index  REAL NOT NULL DEFAULT 0,
             notified     INTEGER NOT NULL DEFAULT 0,
-            pinned       INTEGER NOT NULL DEFAULT 0
+            pinned       INTEGER NOT NULL DEFAULT 0,
+            repeat       TEXT                -- daily|weekdays|weekly|monthly|yearly
         );
 
         CREATE TABLE IF NOT EXISTS task_labels (
@@ -39,6 +51,43 @@ pub fn init(conn: &Connection) -> rusqlite::Result<()> {
             label_id INTEGER NOT NULL REFERENCES labels(id) ON DELETE CASCADE,
             PRIMARY KEY (task_id, label_id)
         );
+
+        -- Simple key/value app settings (e.g. startup_mode). Read by the
+        -- backend at launch and by the Settings screen at runtime.
+        CREATE TABLE IF NOT EXISTS settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+
+        -- Per-task focus stopwatch sessions. A row with a NULL end_at is the
+        -- one currently running (at most one at a time). `seconds` is filled in
+        -- on stop; `notified` counts the 'still tracking' nudges already sent.
+        CREATE TABLE IF NOT EXISTS time_sessions (
+            id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id  INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            start_at TEXT NOT NULL,   -- RFC3339
+            end_at   TEXT,            -- NULL while running
+            seconds  INTEGER,         -- duration, set on stop
+            notified INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_sessions_task ON time_sessions(task_id);
+
+        -- Standalone Pomodoro timer state (single row, id = 1). Persisted so
+        -- the timer survives restarts and keeps ticking while in the tray.
+        CREATE TABLE IF NOT EXISTS pomodoro (
+            id             INTEGER PRIMARY KEY CHECK (id = 1),
+            phase          TEXT NOT NULL DEFAULT 'focus',  -- focus|short|long
+            running        INTEGER NOT NULL DEFAULT 0,
+            start_at       TEXT,                            -- when the running segment began
+            accumulated    INTEGER NOT NULL DEFAULT 0,      -- secs elapsed before this segment
+            completed_focus INTEGER NOT NULL DEFAULT 0,     -- focus phases done in the set
+            notified       INTEGER NOT NULL DEFAULT 0,      -- phase-complete nudge sent?
+            focus_min      INTEGER NOT NULL DEFAULT 25,
+            short_min      INTEGER NOT NULL DEFAULT 5,
+            long_min       INTEGER NOT NULL DEFAULT 15,
+            long_every     INTEGER NOT NULL DEFAULT 4
+        );
+        INSERT OR IGNORE INTO pomodoro (id) VALUES (1);
 
         CREATE INDEX IF NOT EXISTS idx_tasks_status   ON tasks(status);
         CREATE INDEX IF NOT EXISTS idx_tasks_due      ON tasks(due_date);
@@ -72,6 +121,12 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         conn.execute("ALTER TABLE tasks ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0", [])?;
     }
     conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_pinned ON tasks(pinned)", [])?;
+
+    // Recurring tasks: completing one rolls its due date / reminder forward to
+    // the next occurrence instead of marking it done (see `recur.rs`).
+    if !column_exists(conn, "tasks", "repeat") {
+        conn.execute("ALTER TABLE tasks ADD COLUMN repeat TEXT", [])?;
+    }
 
     Ok(())
 }

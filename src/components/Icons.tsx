@@ -159,6 +159,75 @@ export const SearchIcon = (p: P) => (
   </svg>
 );
 
+export const SettingsIcon = (p: P) => (
+  <svg {...base(p)}>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </svg>
+);
+
+export const RepeatIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="m17 2 4 4-4 4" />
+    <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+    <path d="m7 22-4-4 4-4" />
+    <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+  </svg>
+);
+
+export const ExpandIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+  </svg>
+);
+
+export const TimerIcon = (p: P) => (
+  <svg {...base(p)}>
+    <circle cx="12" cy="13" r="8" />
+    <path d="M12 9v4l2 2M9 2h6M12 5V2" />
+  </svg>
+);
+
+export const PlayIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M6 4.5v15l13-7.5-13-7.5z" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+export const PauseIcon = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none" />
+    <rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+export const StopIcon = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+export const SkipIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M5 4.5v15l11-7.5-11-7.5z" fill="currentColor" stroke="none" />
+    <path d="M19 5v14" />
+  </svg>
+);
+
+export const RotateIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+    <path d="M3 3v5h5" />
+  </svg>
+);
+
+export const PowerIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M12 2v10" />
+    <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
+  </svg>
+);
+
 /** The todofy brand mark — a rounded accent square with a check. */
 export const Logo = ({ size = 28 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">

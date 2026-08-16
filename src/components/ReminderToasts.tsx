@@ -1,9 +1,8 @@
 import { useStore } from "../store";
-import { snoozeFrom } from "../lib/dates";
 import { BellIcon, CloseIcon } from "./Icons";
 
 export function ReminderToasts() {
-  const { reminders, dismissReminder, select, patchTask } = useStore();
+  const { reminders, dismissReminder, select, snoozeTask } = useStore();
   if (reminders.length === 0) return null;
 
   return (
@@ -33,7 +32,7 @@ export function ReminderToasts() {
               </button>
               <button
                 onClick={() => {
-                  patchTask({ id: r.id, remindAt: snoozeFrom(10) });
+                  snoozeTask(r.id, 10);
                   dismissReminder(r.id);
                 }}
                 class="rounded-md bg-[var(--color-surface-2)] px-2.5 py-1 text-xs text-[var(--color-muted)] hover:text-[var(--color-text)]"

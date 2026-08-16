@@ -1,19 +1,75 @@
 name: Release
 
+# Publishes a release when a version bump lands on main. The version is read
+# from package.json; a release is cut only when no release exists for it yet,
+# so ordinary pushes (or re-runs) never republish. Release notes are pulled
+# from the matching section of CHANGELOG.md.
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+    paths:
+      - 'package.json'
+      - 'src-tauri/tauri.conf.json'
+      - 'src-tauri/Cargo.toml'
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  check:
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.detect.outputs.version }}
+      release: ${{ steps.detect.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect version and whether it needs releasing
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "Release v$VERSION already exists — nothing to do."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "v$VERSION is new — will build and publish."
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
   release:
+    needs: check
+    if: needs.check.outputs.release == 'true'
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+
+      - name: Extract release notes from CHANGELOG
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+          NOTES=$(awk -v v="## v$VERSION" '
+            index($0, v) == 1 { grab = 1; next }
+            /^## v/ && grab { exit }
+            grab { print }
+          ' CHANGELOG.md)
+          if [ -z "$(printf '%s' "$NOTES" | tr -d '[:space:]')" ]; then
+            NOTES="Download a bundle below (.deb, .rpm, or .AppImage)."
+          fi
+          {
+            echo 'RELEASE_NOTES<<CHANGELOG_EOF'
+            printf '%s\n' "$NOTES"
+            echo ''
+            echo '---'
+            echo 'Download a bundle below (.deb, .rpm, or .AppImage).'
+            echo 'CHANGELOG_EOF'
+          } >> "$GITHUB_ENV"
 
       - name: Install system dependencies
         run: |
@@ -38,8 +94,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'todofy ${{ github.ref_name }}'
-          releaseBody: 'Download a bundle below (.deb, .rpm, or .AppImage). See CHANGELOG.md for release notes.'
+          tagName: v${{ needs.check.outputs.version }}
+          releaseName: 'todofy v${{ needs.check.outputs.version }}'
+          releaseBody: ${{ env.RELEASE_NOTES }}
           releaseDraft: false
           prerelease: false

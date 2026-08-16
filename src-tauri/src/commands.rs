@@ -1,5 +1,6 @@
 use crate::db::Db;
 use crate::models::{Label, NewTask, Task, TaskPatch};
+use crate::recur;
 use chrono::Local;
 use rusqlite::{params, Connection};
 use tauri::State;
@@ -21,7 +22,9 @@ fn label_ids_for(conn: &Connection, task_id: i64) -> rusqlite::Result<Vec<i64>> 
 fn load_task(conn: &Connection, id: i64) -> rusqlite::Result<Task> {
     let mut task = conn.query_row(
         "SELECT id, title, notes, due_date, remind_at, status, priority,
-                created_at, completed_at, order_index, pinned
+                created_at, completed_at, order_index, pinned, repeat,
+                (SELECT COALESCE(SUM(seconds), 0) FROM time_sessions
+                 WHERE task_id = tasks.id AND end_at IS NOT NULL)
          FROM tasks WHERE id = ?1",
         [id],
         |r| {
@@ -37,6 +40,8 @@ fn load_task(conn: &Connection, id: i64) -> rusqlite::Result<Task> {
                 completed_at: r.get(8)?,
                 order_index: r.get(9)?,
                 pinned: r.get(10)?,
+                repeat: r.get(11)?,
+                tracked_seconds: r.get(12)?,
                 label_ids: Vec::new(),
             })
         },
@@ -58,7 +63,7 @@ fn set_labels(conn: &Connection, task_id: i64, label_ids: &[i64]) -> rusqlite::R
 
 #[tauri::command]
 pub fn list_tasks(db: State<Db>) -> CmdResult<Vec<Task>> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.conn();
     // Manual order (order_index) is the primary sort so drag-to-reorder
     // sticks; priority is a visual tag, not a sort key. Done tasks sink.
     let mut stmt = conn
@@ -79,11 +84,11 @@ pub fn list_tasks(db: State<Db>) -> CmdResult<Vec<Task>> {
 
 #[tauri::command]
 pub fn create_task(db: State<Db>, task: NewTask) -> CmdResult<Task> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.conn();
     let created = now_iso();
     conn.execute(
-        "INSERT INTO tasks (title, notes, due_date, remind_at, priority, created_at, order_index)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO tasks (title, notes, due_date, remind_at, priority, created_at, order_index, repeat)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         params![
             task.title.trim(),
             task.notes,
@@ -92,6 +97,7 @@ pub fn create_task(db: State<Db>, task: NewTask) -> CmdResult<Task> {
             task.priority.unwrap_or(4),
             created,
             Local::now().timestamp_millis() as f64,
+            task.repeat,
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -104,7 +110,7 @@ pub fn create_task(db: State<Db>, task: NewTask) -> CmdResult<Task> {
 
 #[tauri::command]
 pub fn update_task(db: State<Db>, patch: TaskPatch) -> CmdResult<Task> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.conn();
     if let Some(title) = &patch.title {
         conn.execute(
             "UPDATE tasks SET title = ?1 WHERE id = ?2",
@@ -151,6 +157,14 @@ pub fn update_task(db: State<Db>, patch: TaskPatch) -> CmdResult<Task> {
         )
         .map_err(|e| e.to_string())?;
     }
+    if let Some(repeat) = &patch.repeat {
+        // `Some(None)` clears the recurrence; `Some(Some(rule))` sets it.
+        conn.execute(
+            "UPDATE tasks SET repeat = ?1 WHERE id = ?2",
+            params![repeat, patch.id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
     load_task(&conn, patch.id).map_err(|e| e.to_string())
 }
 
@@ -159,7 +173,7 @@ pub fn update_task(db: State<Db>, patch: TaskPatch) -> CmdResult<Task> {
 /// so reordering never has to renumber the whole list.
 #[tauri::command]
 pub fn reorder_task(db: State<Db>, id: i64, order_index: f64) -> CmdResult<Task> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.conn();
     conn.execute(
         "UPDATE tasks SET order_index = ?1 WHERE id = ?2",
         params![order_index, id],
@@ -170,7 +184,36 @@ pub fn reorder_task(db: State<Db>, id: i64, order_index: f64) -> CmdResult<Task>
 
 #[tauri::command]
 pub fn toggle_task(db: State<Db>, id: i64, done: bool) -> CmdResult<Task> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.conn();
+    // Completing a repeating task rolls it forward to the next occurrence and
+    // keeps it active, instead of marking it done.
+    if done {
+        let (repeat, due, remind) = conn
+            .query_row(
+                "SELECT repeat, due_date, remind_at FROM tasks WHERE id = ?1",
+                [id],
+                |r| {
+                    Ok((
+                        r.get::<_, Option<String>>(0)?,
+                        r.get::<_, Option<String>>(1)?,
+                        r.get::<_, Option<String>>(2)?,
+                    ))
+                },
+            )
+            .map_err(|e| e.to_string())?;
+
+        if let Some(rule) = repeat.as_deref().filter(|s| !s.is_empty()) {
+            if let Some(next_due) = due.as_deref().and_then(|d| recur::advance_due(d, rule)) {
+                let next_remind = remind.as_deref().and_then(|r| recur::advance_remind(r, rule));
+                conn.execute(
+                    "UPDATE tasks SET due_date = ?1, remind_at = ?2, notified = 0 WHERE id = ?3",
+                    params![next_due, next_remind, id],
+                )
+                .map_err(|e| e.to_string())?;
+                return load_task(&conn, id).map_err(|e| e.to_string());
+            }
+        }
+    }
     if done {
         conn.execute(
             "UPDATE tasks SET status = 'done', completed_at = ?1 WHERE id = ?2",
@@ -188,7 +231,7 @@ pub fn toggle_task(db: State<Db>, id: i64, done: bool) -> CmdResult<Task> {
 
 #[tauri::command]
 pub fn delete_task(db: State<Db>, id: i64) -> CmdResult<()> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.conn();
     conn.execute("DELETE FROM tasks WHERE id = ?1", [id])
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -196,7 +239,7 @@ pub fn delete_task(db: State<Db>, id: i64) -> CmdResult<()> {
 
 #[tauri::command]
 pub fn list_labels(db: State<Db>) -> CmdResult<Vec<Label>> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.conn();
     let mut stmt = conn
         .prepare("SELECT id, name, color FROM labels ORDER BY name COLLATE NOCASE")
         .map_err(|e| e.to_string())?;
@@ -216,7 +259,7 @@ pub fn list_labels(db: State<Db>) -> CmdResult<Vec<Label>> {
 
 #[tauri::command]
 pub fn create_label(db: State<Db>, name: String, color: String) -> CmdResult<Label> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.conn();
     conn.execute(
         "INSERT INTO labels (name, color) VALUES (?1, ?2)",
         params![name.trim(), color],
@@ -232,7 +275,7 @@ pub fn create_label(db: State<Db>, name: String, color: String) -> CmdResult<Lab
 
 #[tauri::command]
 pub fn update_label(db: State<Db>, id: i64, name: String, color: String) -> CmdResult<Label> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.conn();
     conn.execute(
         "UPDATE labels SET name = ?1, color = ?2 WHERE id = ?3",
         params![name.trim(), color, id],
@@ -247,7 +290,7 @@ pub fn update_label(db: State<Db>, id: i64, name: String, color: String) -> CmdR
 
 #[tauri::command]
 pub fn delete_label(db: State<Db>, id: i64) -> CmdResult<()> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.conn();
     conn.execute("DELETE FROM labels WHERE id = ?1", [id])
         .map_err(|e| e.to_string())?;
     Ok(())

@@ -39,6 +39,8 @@ fn tick(app: &AppHandle) -> Result<(), String> {
         // Let an open window surface an in-app reminder toast too.
         let _ = app.emit("reminder-fired", r.clone());
     }
+    // Focus timers (Pomodoro + per-task stopwatch) also need background nudges.
+    crate::timer::poll(app);
     Ok(())
 }
 
@@ -46,7 +48,7 @@ fn tick(app: &AppHandle) -> Result<(), String> {
 /// been notified yet, then mark them notified in the same pass.
 fn collect_due(app: &AppHandle) -> Result<Vec<DueReminder>, String> {
     let db = app.state::<Db>();
-    let conn = db.0.lock().unwrap();
+    let conn = db.conn();
     let now = Local::now();
 
     let mut stmt = conn

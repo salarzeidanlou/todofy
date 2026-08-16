@@ -1,7 +1,8 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { useStore } from "../store";
-import { combineDateTime, snoozeFrom, timeOf, toLocalDate, today } from "../lib/dates";
+import { combineDateTime, timeOf, today } from "../lib/dates";
+import type { RepeatRule } from "../types";
 import {
   CalendarIcon,
   CheckIcon,
@@ -9,9 +10,15 @@ import {
   FlagIcon,
   NoteIcon,
   PinIcon,
+  PlayIcon,
+  RepeatIcon,
+  StopIcon,
+  TimerIcon,
   TrashIcon,
 } from "./Icons";
 import { DatePicker } from "./DatePicker";
+import { RepeatPicker } from "./RepeatPicker";
+import { formatDuration } from "../lib/duration";
 
 const PRIORITIES: { value: 1 | 2 | 3 | 4; label: string; color: string }[] = [
   { value: 1, label: "P1", color: "var(--color-prio-1)" },
@@ -29,7 +36,11 @@ export function TaskDetail() {
     patchTask,
     removeTask,
     toggleTask,
+    snoozeTask,
     requestConfirm,
+    activeTimer,
+    startTaskTimer,
+    stopTaskTimer,
   } = useStore();
   const task = tasks.find((t) => t.id === selectedId);
 
@@ -58,6 +69,7 @@ export function TaskDetail() {
 
   if (!task) return null;
   const done = task.status === "done";
+  const tracking = activeTimer?.taskId === task.id;
 
   const saveTitle = () => {
     const t = title.trim();
@@ -89,6 +101,13 @@ export function TaskDetail() {
       remindAt: t ? combineDateTime(base, t) : null,
     });
   };
+  // A recurrence needs a due date to advance from; anchor to today if unset.
+  const onRepeat = (rule: RepeatRule | null) =>
+    patchTask(
+      rule && !task.dueDate
+        ? { id: task.id, repeat: rule, dueDate: today() }
+        : { id: task.id, repeat: rule },
+    );
 
   return (
     <aside class="absolute inset-y-0 right-0 z-40 flex w-[340px] animate-slide-left flex-col border-l border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl shadow-black/20">
@@ -185,15 +204,13 @@ export function TaskDetail() {
             time={timeOf(task.remindAt)}
             onTimeChange={onTime}
             reminderAt={task.remindAt}
-            onSnooze={(min) => {
-              const iso = snoozeFrom(min);
-              patchTask({
-                id: task.id,
-                dueDate: toLocalDate(new Date(iso)),
-                remindAt: iso,
-              });
-            }}
+            onSnooze={(min) => snoozeTask(task.id, min)}
           />
+        </Field>
+
+        {/* Repeat */}
+        <Field icon={<RepeatIcon width={16} height={16} />} label="Repeat">
+          <RepeatPicker value={task.repeat} onChange={onRepeat} showLabel />
         </Field>
 
         {/* Priority */}
@@ -216,6 +233,32 @@ export function TaskDetail() {
                 </button>
               );
             })}
+          </div>
+        </Field>
+
+        {/* Focus time */}
+        <Field icon={<TimerIcon width={16} height={16} />} label="Focus">
+          <div class="flex items-center gap-2">
+            <button
+              onClick={() => (tracking ? stopTaskTimer() : startTaskTimer(task.id))}
+              class={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+                tracking
+                  ? "bg-[var(--color-danger)] text-white"
+                  : "bg-[var(--color-surface-2)] text-[var(--color-muted)] hover:text-[var(--color-text)]"
+              }`}
+            >
+              {tracking ? (
+                <StopIcon width={12} height={12} />
+              ) : (
+                <PlayIcon width={12} height={12} />
+              )}
+              {tracking ? "Stop" : "Start"}
+            </button>
+            <span class="text-xs text-[var(--color-faint)]">
+              {task.trackedSeconds > 0
+                ? `${formatDuration(task.trackedSeconds)} focused`
+                : "Not tracked yet"}
+            </span>
           </div>
         </Field>
 

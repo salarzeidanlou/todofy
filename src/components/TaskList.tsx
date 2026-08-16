@@ -5,6 +5,8 @@ import { QuickAdd } from "./QuickAdd";
 import { TaskItem } from "./TaskItem";
 import { TaskSection } from "./TaskSection";
 import { LabelsView } from "./LabelsView";
+import { SettingsView } from "./SettingsView";
+import { FocusView } from "./FocusView";
 
 function viewTitle(view: ViewId, labelName?: string): string {
   switch (view.kind) {
@@ -20,6 +22,10 @@ function viewTitle(view: ViewId, labelName?: string): string {
       return "Completed";
     case "labels":
       return "Labels";
+    case "settings":
+      return "Settings";
+    case "focus":
+      return "Focus";
     case "label":
       return labelName ?? "Label";
   }
@@ -39,6 +45,10 @@ function viewSubtitle(view: ViewId): string {
       return "Everything you've finished";
     case "labels":
       return "Manage your labels";
+    case "settings":
+      return "Startup, appearance, and about";
+    case "focus":
+      return "Pomodoro and focus history";
     case "label":
       return "Tagged tasks";
   }
@@ -47,6 +57,8 @@ function viewSubtitle(view: ViewId): string {
 export function TaskList() {
   const { tasks, labels, view, loading } = useStore();
   if (view.kind === "labels") return <LabelsView />;
+  if (view.kind === "settings") return <SettingsView />;
+  if (view.kind === "focus") return <FocusView />;
 
   const labelName =
     view.kind === "label"

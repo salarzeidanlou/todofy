@@ -1,5 +1,5 @@
 import * as chrono from "chrono-node";
-import type { Label } from "../types";
+import type { Label, RepeatRule } from "../types";
 import { toLocalDate } from "./dates";
 
 export interface ParsedQuickAdd {
@@ -8,9 +8,22 @@ export interface ParsedQuickAdd {
   dueDate: string | null; // YYYY-MM-DD
   time: string | null; // HH:mm, only when a clock time was stated
   priority: number | null; // 1..4
+  repeat: RepeatRule | null;
   labelIds: number[];
   labelNames: string[];
 }
+
+/**
+ * Recurrence phrases, most specific first so "every weekday" wins over the
+ * "every week" prefix. The matched token is stripped from the title.
+ */
+const REPEAT_PATTERNS: { rule: RepeatRule; re: RegExp }[] = [
+  { rule: "weekdays", re: /(^|\s)(every\s?weekdays?|weekdays)(?=\s|$)/i },
+  { rule: "daily", re: /(^|\s)(every\s?day|everyday|daily)(?=\s|$)/i },
+  { rule: "weekly", re: /(^|\s)(every\s?week|weekly)(?=\s|$)/i },
+  { rule: "monthly", re: /(^|\s)(every\s?month|monthly)(?=\s|$)/i },
+  { rule: "yearly", re: /(^|\s)(every\s?year|yearly|annually)(?=\s|$)/i },
+];
 
 /** Priority written as `p1`..`p4` or `!1`..`!4`, as a standalone token. */
 const PRIORITY_RE = /(^|\s)(?:p([1-4])|!([1-4]))(?=\s|$)/i;
@@ -36,6 +49,7 @@ function tidy(s: string): string {
 export function parseQuickAdd(input: string, labels: Label[]): ParsedQuickAdd {
   let text = input;
   let priority: number | null = null;
+  let repeat: RepeatRule | null = null;
   const labelIds: number[] = [];
   const labelNames: string[] = [];
 
@@ -44,6 +58,16 @@ export function parseQuickAdd(input: string, labels: Label[]): ParsedQuickAdd {
   if (pm) {
     priority = Number(pm[2] ?? pm[3]);
     text = text.slice(0, pm.index!) + (pm[1] ? " " : "") + text.slice(pm.index! + pm[0].length);
+  }
+
+  // Recurrence next, before chrono, so "every week" isn't read as a date.
+  for (const { rule, re } of REPEAT_PATTERNS) {
+    const m = text.match(re);
+    if (m) {
+      repeat = rule;
+      text = text.slice(0, m.index!) + (m[1] ? " " : "") + text.slice(m.index! + m[0].length);
+      break;
+    }
   }
 
   // Labels: only strip a token if it names a label that actually exists.
@@ -77,6 +101,7 @@ export function parseQuickAdd(input: string, labels: Label[]): ParsedQuickAdd {
     dueDate,
     time,
     priority,
+    repeat,
     labelIds,
     labelNames,
   };

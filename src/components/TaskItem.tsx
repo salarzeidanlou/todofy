@@ -2,8 +2,21 @@ import type { JSX } from "preact";
 import { useStore } from "../store";
 import { formatDue } from "../lib/dates";
 import type { Task } from "../types";
-import { BellIcon, CheckIcon, FlagIcon, GripIcon, PinIcon, TrashIcon } from "./Icons";
+import {
+  BellIcon,
+  CheckIcon,
+  FlagIcon,
+  GripIcon,
+  PinIcon,
+  PlayIcon,
+  RepeatIcon,
+  StopIcon,
+  TimerIcon,
+  TrashIcon,
+} from "./Icons";
 import { formatReminder } from "../lib/dates";
+import { repeatLabel } from "../lib/repeat";
+import { formatDuration } from "../lib/duration";
 
 const PRIORITY_COLOR: Record<number, string> = {
   1: "var(--color-prio-1)",
@@ -38,12 +51,17 @@ export function TaskItem({ task, drag }: { task: Task; drag?: DragProps }) {
     select,
     selectedId,
     requestConfirm,
+    activeTimer,
+    startTaskTimer,
+    stopTaskTimer,
   } = useStore();
   const done = task.status === "done";
   const selected = selectedId === task.id;
   const taskLabels = labels.filter((l) => task.labelIds.includes(l.id));
   const due = task.dueDate ? formatDue(task.dueDate) : null;
   const hasReminder = !!task.remindAt;
+  const repeats = !!task.repeat;
+  const tracking = activeTimer?.taskId === task.id;
   const reorderable = !!drag?.reorderable;
 
   return (
@@ -100,7 +118,7 @@ export function TaskItem({ task, drag }: { task: Task; drag?: DragProps }) {
         >
           {task.title}
         </p>
-        {(due || hasReminder || task.priority < 4 || taskLabels.length > 0) && (
+        {(due || hasReminder || repeats || task.trackedSeconds > 0 || task.priority < 4 || taskLabels.length > 0) && (
           <div class="mt-1 flex flex-wrap items-center gap-2">
             {task.priority < 4 && (
               <span
@@ -126,6 +144,24 @@ export function TaskItem({ task, drag }: { task: Task; drag?: DragProps }) {
                 {formatReminder(task.remindAt!)}
               </span>
             )}
+            {repeats && (
+              <span
+                class="inline-flex items-center gap-1 text-xs text-[var(--color-faint)]"
+                title={`Repeats ${repeatLabel(task.repeat).toLowerCase()}`}
+              >
+                <RepeatIcon width={12} height={12} />
+                {repeatLabel(task.repeat)}
+              </span>
+            )}
+            {task.trackedSeconds > 0 && (
+              <span
+                class="inline-flex items-center gap-1 text-xs text-[var(--color-faint)]"
+                title="Time focused on this task"
+              >
+                <TimerIcon width={12} height={12} />
+                {formatDuration(task.trackedSeconds)}
+              </span>
+            )}
             {taskLabels.map((l) => (
               <span
                 key={l.id}
@@ -142,6 +178,23 @@ export function TaskItem({ task, drag }: { task: Task; drag?: DragProps }) {
           </div>
         )}
       </div>
+
+      {!done && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            tracking ? stopTaskTimer() : startTaskTimer(task.id);
+          }}
+          class={`mt-0.5 shrink-0 transition-opacity ${
+            tracking
+              ? "text-[var(--color-danger)] opacity-100"
+              : "text-[var(--color-faint)] opacity-0 hover:text-[var(--color-accent)] group-hover:opacity-100"
+          }`}
+          title={tracking ? "Stop tracking time" : "Start tracking time"}
+        >
+          {tracking ? <StopIcon width={14} height={14} /> : <PlayIcon width={14} height={14} />}
+        </button>
+      )}
 
       <button
         onClick={(e) => {
