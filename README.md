@@ -6,7 +6,7 @@
 
 **A modern, fast, and beautiful to‑do app for Linux.**
 
-Smart lists, labels, and reminders that actually notify you — even when it's tucked away in your tray.
+Smart lists, labels, recurring tasks, focus timers, and reminders that actually notify you — even when it's tucked away in your tray.
 
 ![Platform](https://img.shields.io/badge/platform-Linux-1a2029?style=flat-square&logo=linux&logoColor=white)
 ![Tauri](https://img.shields.io/badge/Tauri-2.x-24C8DB?style=flat-square&logo=tauri&logoColor=white)
@@ -24,6 +24,9 @@ Smart lists, labels, and reminders that actually notify you — even when it's t
 - 🗓️ **Smart views** — *Today* (with overdue rollup), *Upcoming* (grouped by date), and *Inbox*
 - ⚡ **Global quick‑add** — hit **Ctrl+Alt+A** anywhere (even with todofy tucked in the tray) for a floating capture bar; type, press Enter, and you're back to what you were doing
 - ✍️ **Natural‑language quick‑add** — type *"pay rent friday 5pm #home p1"* and the date, time, priority, and label are parsed out live and shown as chips
+- 🔁 **Recurring tasks** — repeat *daily, every weekday, weekly, monthly,* or *yearly*; completing one rolls it forward to the next occurrence instead of finishing it (also from natural language — *"water plants every week"*)
+- 🍅 **Focus timers** — a built‑in **Pomodoro** (focus / short & long breaks) *and* a **per‑task stopwatch**; both keep counting while hidden in the tray and survive a restart, and never auto‑stop — they nudge you instead
+- 📊 **Focus screen** — start the Pomodoro, tune phase lengths, and review your focus history (Today / This week / total, grouped by day)
 - ✋ **Drag‑and‑drop reordering** — grab any task and drop it exactly where you want; your manual order sticks
 - 📌 **Pinning** — pin any task to float it to the top of its group, with a dedicated *Pinboard* view
 - ✅ **Completed view** — every finished task, app-wide, newest first
@@ -31,9 +34,10 @@ Smart lists, labels, and reminders that actually notify you — even when it's t
 - 📆 **Beautiful date & time picker** — click the month or year to jump anywhere in seconds
 - ⏰ **Reminders that reach you** — native desktop notifications fire **even when hidden in the tray**, plus in‑app toasts and one‑tap **snooze**
 - 🚩 **Priorities** — P1–P4 with color‑coded flags
+- ⚙️ **Settings & run‑on‑startup** — launch todofy at login, opening the window or starting quietly in the tray
 - 🌗 **Light & dark themes** — dark by default, remembers your choice
 - ⌨️ **Keyboard‑first** — add, navigate, complete, and edit without touching the mouse
-- 🪟 **System tray** — closes to tray and keeps running so reminders never miss
+- 🪟 **System tray** — closes to tray and keeps running so reminders never miss; start/pause the Pomodoro, stop the task timer, and watch the live countdown right from the tray
 - 🧭 **Collapsible sidebar** — go full or minimal
 - 💾 **Local‑first** — everything is stored in a local SQLite database; no account, no cloud, no tracking
 
@@ -50,18 +54,18 @@ Grab a package from the [Releases](../../releases) page, or build it yourself (s
 
 **AppImage** — portable, runs on any distro:
 ```bash
-chmod +x todofy_1.2.0_amd64.AppImage
-./todofy_1.2.0_amd64.AppImage
+chmod +x todofy_1.3.0_amd64.AppImage
+./todofy_1.3.0_amd64.AppImage
 ```
 
 **Debian / Ubuntu:**
 ```bash
-sudo dpkg -i todofy_1.2.0_amd64.deb
+sudo dpkg -i todofy_1.3.0_amd64.deb
 ```
 
 **Fedora / RHEL / openSUSE:**
 ```bash
-sudo rpm -i todofy-1.2.0-1.x86_64.rpm
+sudo rpm -i todofy-1.3.0-1.x86_64.rpm
 ```
 
 > Your tasks live at `~/.local/share/com.unifybrowse.todofy/todofy.db`.
@@ -132,16 +136,20 @@ bunx tauri icon app-icon.svg
 ```
 todofy/
 ├── src/                    # Preact frontend
-│   ├── components/         # UI (Sidebar, TaskList, TaskDetail, DatePicker, …)
-│   ├── lib/                # dates, theme, keyboard, grouping helpers
+│   ├── components/         # UI (Sidebar, TaskList, TaskDetail, DatePicker,
+│   │                       #     FocusView, FocusWidget, SettingsView, …)
+│   ├── lib/                # dates, duration, theme, keyboard, nlp, repeat helpers
 │   ├── store.ts            # Zustand store
 │   └── types.ts
 ├── src-tauri/              # Rust backend
 │   └── src/
 │       ├── commands.rs     # task & label CRUD (Tauri commands)
 │       ├── db.rs           # SQLite schema & migrations
-│       ├── scheduler.rs    # background reminder notifications
-│       ├── tray.rs         # system tray
+│       ├── recur.rs        # recurring-task date math
+│       ├── timer.rs        # focus timers (Pomodoro + per-task stopwatch)
+│       ├── settings.rs     # app settings & run-on-startup
+│       ├── scheduler.rs    # background reminders + timer nudges
+│       ├── tray.rs         # system tray + live timer controls
 │       └── lib.rs          # app setup
 └── app-icon.svg            # source for the app icon
 ```
@@ -150,8 +158,11 @@ todofy/
 
 - [x] Drag‑and‑drop reordering
 - [x] Natural‑language quick‑add (*"pay rent friday 5pm"*)
-- [ ] Recurring tasks
+- [x] Recurring tasks
+- [x] Focus timers (Pomodoro + per‑task time tracking)
+- [x] Run on startup
 - [ ] Search & filters
+- [ ] Subtasks & checklists
 
 ## 🤝 Contributing
 
