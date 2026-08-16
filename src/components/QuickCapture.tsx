@@ -4,9 +4,10 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emit } from "@tauri-apps/api/event";
 import { api } from "../lib/api";
 import { parseQuickAdd } from "../lib/nlp";
+import { repeatLabel } from "../lib/repeat";
 import { combineDateTime, formatDue, formatTime, today } from "../lib/dates";
 import type { Label, NewTask } from "../types";
-import { BellIcon, CalendarIcon, FlagIcon, Logo } from "./Icons";
+import { BellIcon, CalendarIcon, FlagIcon, Logo, RepeatIcon } from "./Icons";
 
 const PRIORITY_COLOR: Record<number, string> = {
   1: "var(--color-prio-1)",
@@ -29,7 +30,11 @@ export function QuickCapture() {
 
   const parsed = useMemo(() => parseQuickAdd(title, labels), [title, labels]);
   const hasChips =
-    !!parsed.dueDate || !!parsed.time || parsed.priority !== null || parsed.labelNames.length > 0;
+    !!parsed.dueDate ||
+    !!parsed.time ||
+    parsed.priority !== null ||
+    parsed.repeat !== null ||
+    parsed.labelNames.length > 0;
 
   const focusInput = () => requestAnimationFrame(() => inputRef.current?.focus());
 
@@ -44,12 +49,13 @@ export function QuickCapture() {
     if (!finalTitle) return;
 
     const finalTime = parsed.time;
-    // A time needs a date to live on — default to today.
-    const finalDue = parsed.dueDate || (finalTime ? today() : null);
+    // A time or a recurrence needs a date to anchor to — default to today.
+    const finalDue = parsed.dueDate || (finalTime || parsed.repeat ? today() : null);
 
     const task: NewTask = { title: finalTitle, priority: parsed.priority ?? 4 };
     if (finalDue) task.dueDate = finalDue;
     if (finalDue && finalTime) task.remindAt = combineDateTime(finalDue, finalTime);
+    if (parsed.repeat) task.repeat = parsed.repeat;
     if (parsed.labelIds.length) task.labelIds = parsed.labelIds;
 
     try {
@@ -132,6 +138,12 @@ export function QuickCapture() {
               <Chip>
                 <BellIcon width={11} height={11} />
                 {formatTime(parsed.time)}
+              </Chip>
+            )}
+            {parsed.repeat && (
+              <Chip>
+                <RepeatIcon width={11} height={11} />
+                {repeatLabel(parsed.repeat)}
               </Chip>
             )}
             {parsed.labelNames.map((name) => {

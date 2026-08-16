@@ -1,5 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Label, NewTask, Task, TaskPatch } from "../types";
+import type {
+  ActiveTimer,
+  Label,
+  NewTask,
+  Pomodoro,
+  SessionLog,
+  Task,
+  TaskPatch,
+} from "../types";
 
 export const api = {
   listTasks: () => invoke<Task[]>("list_tasks"),
@@ -17,4 +25,37 @@ export const api = {
   updateLabel: (id: number, name: string, color: string) =>
     invoke<Label>("update_label", { id, name, color }),
   deleteLabel: (id: number) => invoke<void>("delete_label", { id }),
+
+  getSetting: (key: string) => invoke<string | null>("get_setting", { key }),
+  setSetting: (key: string, value: string) =>
+    invoke<void>("set_setting", { key, value }),
+  getAutostart: () => invoke<boolean>("get_autostart"),
+  setAutostart: (enabled: boolean) =>
+    invoke<void>("set_autostart", { enabled }),
+
+  // Per-task stopwatch
+  startTimer: (id: number) => invoke<ActiveTimer | null>("start_timer", { id }),
+  stopTimer: () => invoke<void>("stop_timer"),
+  activeTimer: () => invoke<ActiveTimer | null>("active_timer"),
+  focusHistory: (limit = 200) =>
+    invoke<SessionLog[]>("focus_history", { limit }),
+
+  // Standalone Pomodoro
+  getPomodoro: () => invoke<Pomodoro>("get_pomodoro"),
+  pomodoroStart: () => invoke<Pomodoro>("pomodoro_start"),
+  pomodoroPause: () => invoke<Pomodoro>("pomodoro_pause"),
+  pomodoroReset: () => invoke<Pomodoro>("pomodoro_reset"),
+  pomodoroNext: () => invoke<Pomodoro>("pomodoro_next"),
+  setPomodoroConfig: (
+    focusMin: number,
+    shortMin: number,
+    longMin: number,
+    longEvery: number,
+  ) =>
+    invoke<Pomodoro>("set_pomodoro_config", {
+      focusMin,
+      shortMin,
+      longMin,
+      longEvery,
+    }),
 };

@@ -9,10 +9,12 @@ import {
   today,
 } from "../lib/dates";
 import { parseQuickAdd } from "../lib/nlp";
-import type { NewTask, ViewId } from "../types";
-import { BellIcon, CalendarIcon, FlagIcon, PlusIcon } from "./Icons";
+import { repeatLabel } from "../lib/repeat";
+import type { NewTask, RepeatRule, ViewId } from "../types";
+import { BellIcon, CalendarIcon, FlagIcon, PlusIcon, RepeatIcon } from "./Icons";
 import { DatePicker } from "./DatePicker";
 import { PriorityPicker } from "./PriorityPicker";
+import { RepeatPicker } from "./RepeatPicker";
 
 const PRIORITY_COLOR: Record<number, string> = {
   1: "var(--color-prio-1)",
@@ -34,6 +36,7 @@ export function QuickAdd() {
   const [due, setDue] = useState(() => defaultDue(view));
   const [time, setTime] = useState<string | null>(null);
   const [priority, setPriority] = useState(4);
+  const [repeat, setRepeat] = useState<RepeatRule | null>(null);
   const [focused, setFocused] = useState(false);
 
   // When you switch views, pre-fill the date so the task shows up there.
@@ -42,7 +45,11 @@ export function QuickAdd() {
   // Live natural-language parse for the preview chips ("friday 5pm", "#home"…).
   const parsed = useMemo(() => parseQuickAdd(title, labels), [title, labels]);
   const hasChips =
-    !!parsed.dueDate || !!parsed.time || parsed.priority !== null || parsed.labelNames.length > 0;
+    !!parsed.dueDate ||
+    !!parsed.time ||
+    parsed.priority !== null ||
+    parsed.repeat !== null ||
+    parsed.labelNames.length > 0;
 
   const submit = async (e: Event) => {
     e.preventDefault();
@@ -51,14 +58,16 @@ export function QuickAdd() {
     if (!finalTitle) return;
 
     const finalTime = parsed.time ?? time;
+    const finalRepeat = parsed.repeat ?? repeat;
     const dateFromInput = parsed.dueDate ?? due;
-    // A time needs a date to live on — default to today.
-    const finalDue = dateFromInput || (finalTime ? today() : "");
+    // A time or a recurrence needs a date to anchor to — default to today.
+    const finalDue = dateFromInput || (finalTime || finalRepeat ? today() : "");
 
     const task: NewTask = { title: finalTitle, priority: parsed.priority ?? priority };
     if (finalDue) task.dueDate = finalDue;
     // A time turns into a reminder the scheduler will notify on.
     if (finalDue && finalTime) task.remindAt = combineDateTime(finalDue, finalTime);
+    if (finalRepeat) task.repeat = finalRepeat;
 
     const labelIds = new Set(parsed.labelIds);
     if (view.kind === "label") labelIds.add(view.labelId);
@@ -69,6 +78,7 @@ export function QuickAdd() {
     setDue(defaultDue(view));
     setTime(null);
     setPriority(4);
+    setRepeat(null);
   };
 
   return (
@@ -90,6 +100,7 @@ export function QuickAdd() {
           class="flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--color-faint)]"
         />
         <PriorityPicker value={priority} onChange={setPriority} />
+        <RepeatPicker value={repeat} onChange={setRepeat} />
         <DatePicker
           value={due || null}
           onChange={(v) => setDue(v ?? "")}
@@ -123,6 +134,12 @@ export function QuickAdd() {
             <Chip>
               <BellIcon width={11} height={11} />
               {formatTime(parsed.time)}
+            </Chip>
+          )}
+          {parsed.repeat && (
+            <Chip>
+              <RepeatIcon width={11} height={11} />
+              {repeatLabel(parsed.repeat)}
             </Chip>
           )}
           {parsed.labelNames.map((name) => {

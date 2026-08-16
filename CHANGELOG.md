@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.3.0 — 2026-08-16
+
+### Added
+- Focus timers — two independent, backend-tracked timers that keep counting while todofy is hidden in the tray and survive a restart:
+  - Pomodoro (focus / short break / long break) with Start·Pause, Reset, and Skip, plus configurable phase lengths
+  - Per-task stopwatch — press play on any task to track time on it; each session is recorded and the task shows its total focused time
+  - Neither timer auto-stops: when a phase finishes or a stopwatch runs long, todofy sends a notification and keeps counting
+- Focus screen — a dedicated page to start the Pomodoro, tune its lengths, and browse focus history (Today / This week / Tracked-total, grouped by day); opens from the floating focus widget
+- Focus widget — a floating timer panel (bottom-left) with live countdowns, opened from the sidebar
+- Tray timer controls — start/pause the Pomodoro and stop the task stopwatch from the tray menu, with a live status line and a countdown shown on the tray icon
+- Recurring tasks — set a task to repeat Daily, Every weekday, Weekly, Monthly, or Yearly; completing it rolls the due date and reminder to the next occurrence instead of finishing it. Also parsed from natural language ("water plants every week")
+- Settings screen — with run-on-startup (launch todofy at login, opening the window or starting quietly in the tray)
+
+### Changed
+- Pomodoro length settings live on the Focus screen (not the Settings screen)
+- Theme toggle moved from the sidebar into Settings → Appearance
+- The main window now starts hidden and is revealed by the backend, so a tray-mode login launch no longer flashes a window
+- Content Security Policy is now enabled (previously disabled)
+
+### Fixed
+- Clearing a task's date, reminder, or notes is no longer a silent no-op — a serde `Option<Option<T>>` quirk had been collapsing an explicit `null` into "leave unchanged"
+
 ## v1.2.0 — 2026-08-13
 
 ### Added

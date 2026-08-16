@@ -1,12 +1,14 @@
 import { create } from "zustand";
 import { api } from "./lib/api";
-import { toLocalDate, today } from "./lib/dates";
+import { snoozeFrom, toLocalDate, today } from "./lib/dates";
 import { sectionsForView } from "./lib/grouping";
 import { applyTheme, initialTheme, type Theme } from "./lib/theme";
 import type {
   ActiveReminder,
+  ActiveTimer,
   Label,
   NewTask,
+  Pomodoro,
   Task,
   TaskPatch,
   ViewId,
@@ -31,6 +33,10 @@ interface State {
   confirm: ConfirmOptions | null;
   sidebarCollapsed: boolean;
 
+  activeTimer: ActiveTimer | null;
+  pomodoro: Pomodoro | null;
+  showFocus: boolean;
+
   load: () => Promise<void>;
   setView: (view: ViewId) => void;
   select: (id: number | null) => void;
@@ -45,11 +51,29 @@ interface State {
   patchTask: (patch: TaskPatch) => Promise<void>;
   reorderTask: (id: number, orderIndex: number) => Promise<void>;
   toggleTask: (id: number, done: boolean) => Promise<void>;
+  snoozeTask: (id: number, minutes: number) => Promise<void>;
   removeTask: (id: number) => Promise<void>;
 
   addLabel: (name: string, color: string) => Promise<Label>;
   editLabel: (id: number, name: string, color: string) => Promise<void>;
   removeLabel: (id: number) => Promise<void>;
+
+  loadTimers: () => Promise<void>;
+  onTimersChanged: () => Promise<void>;
+  toggleFocus: () => void;
+  refreshPomodoro: () => Promise<void>;
+  startTaskTimer: (id: number) => Promise<void>;
+  stopTaskTimer: () => Promise<void>;
+  pomodoroStart: () => Promise<void>;
+  pomodoroPause: () => Promise<void>;
+  pomodoroReset: () => Promise<void>;
+  pomodoroNext: () => Promise<void>;
+  setPomodoroConfig: (
+    focusMin: number,
+    shortMin: number,
+    longMin: number,
+    longEvery: number,
+  ) => Promise<void>;
 }
 
 export const useStore = create<State>((set, get) => ({
@@ -62,6 +86,10 @@ export const useStore = create<State>((set, get) => ({
   theme: initialTheme(),
   confirm: null,
   sidebarCollapsed: localStorage.getItem("todofy-sidebar") === "collapsed",
+
+  activeTimer: null,
+  pomodoro: null,
+  showFocus: false,
 
   load: async () => {
     set({ loading: true });
@@ -133,6 +161,18 @@ export const useStore = create<State>((set, get) => ({
     });
   },
 
+  // Push a task's reminder `minutes` into the future. The due date follows the
+  // reminder so a snoozed task lands in the view that matches its new time —
+  // shared by the reminder toast and the detail panel so both behave the same.
+  snoozeTask: async (id, minutes) => {
+    const iso = snoozeFrom(minutes);
+    await get().patchTask({
+      id,
+      dueDate: toLocalDate(new Date(iso)),
+      remindAt: iso,
+    });
+  },
+
   removeTask: async (id) => {
     await api.deleteTask(id);
     set({
@@ -168,6 +208,53 @@ export const useStore = create<State>((set, get) => ({
       view: view.kind === "label" && view.labelId === id ? { kind: "today" } : view,
     });
   },
+
+  // --- Focus timers ---------------------------------------------------------
+
+  loadTimers: async () => {
+    const [activeTimer, pomodoro] = await Promise.all([
+      api.activeTimer(),
+      api.getPomodoro(),
+    ]);
+    // Surface the widget if something is already running (e.g. after restart).
+    set({
+      activeTimer,
+      pomodoro,
+      showFocus: get().showFocus || !!activeTimer || pomodoro.running,
+    });
+  },
+
+  // A timer changed outside the UI (e.g. the tray menu) — re-sync everything.
+  onTimersChanged: async () => {
+    const [activeTimer, pomodoro, tasks] = await Promise.all([
+      api.activeTimer(),
+      api.getPomodoro(),
+      api.listTasks(),
+    ]);
+    set({ activeTimer, pomodoro, tasks: sortTasks(tasks) });
+  },
+
+  toggleFocus: () => set({ showFocus: !get().showFocus }),
+
+  refreshPomodoro: async () => set({ pomodoro: await api.getPomodoro() }),
+
+  // Refresh tasks (without the loading skeleton) so tracked totals stay current
+  // after a session closes.
+  startTaskTimer: async (id) => {
+    const activeTimer = await api.startTimer(id);
+    set({ activeTimer, showFocus: true, tasks: sortTasks(await api.listTasks()) });
+  },
+  stopTaskTimer: async () => {
+    await api.stopTimer();
+    set({ activeTimer: null, tasks: sortTasks(await api.listTasks()) });
+  },
+
+  pomodoroStart: async () => set({ pomodoro: await api.pomodoroStart(), showFocus: true }),
+  pomodoroPause: async () => set({ pomodoro: await api.pomodoroPause() }),
+  pomodoroReset: async () => set({ pomodoro: await api.pomodoroReset() }),
+  pomodoroNext: async () => set({ pomodoro: await api.pomodoroNext() }),
+  setPomodoroConfig: async (focusMin, shortMin, longMin, longEvery) =>
+    set({ pomodoro: await api.setPomodoroConfig(focusMin, shortMin, longMin, longEvery) }),
 }));
 
 /**
@@ -203,6 +290,8 @@ export function tasksForView(tasks: Task[], view: ViewId): Task[] {
     case "completed":
       return tasks.filter((x) => x.status === "done");
     case "labels":
+    case "settings":
+    case "focus":
       return [];
     case "label":
       return tasks.filter((x) => x.labelIds.includes(view.labelId));

@@ -4,6 +4,9 @@ export interface Label {
   color: string;
 }
 
+/** How a task repeats. Completing it rolls the due date to the next occurrence. */
+export type RepeatRule = "daily" | "weekdays" | "weekly" | "monthly" | "yearly";
+
 export interface Task {
   id: number;
   title: string;
@@ -16,7 +19,42 @@ export interface Task {
   completedAt: string | null;
   orderIndex: number;
   pinned: boolean;
+  repeat: RepeatRule | null;
+  trackedSeconds: number;
   labelIds: number[];
+}
+
+/** The currently running per-task stopwatch. */
+export interface ActiveTimer {
+  taskId: number;
+  title: string;
+  startAt: string; // ISO
+}
+
+/** A completed focus session, for the history view. */
+export interface SessionLog {
+  id: number;
+  taskId: number;
+  title: string;
+  startAt: string;
+  endAt: string;
+  seconds: number;
+}
+
+export type PomodoroPhase = "focus" | "short" | "long";
+
+/** Standalone Pomodoro timer state (mirrors the backend row). */
+export interface Pomodoro {
+  phase: PomodoroPhase;
+  running: boolean;
+  startAt: string | null; // ISO; set while running
+  accumulated: number; // seconds elapsed before the running segment
+  completedFocus: number;
+  target: number; // seconds the current phase should last
+  focusMin: number;
+  shortMin: number;
+  longMin: number;
+  longEvery: number;
 }
 
 export interface NewTask {
@@ -26,6 +64,7 @@ export interface NewTask {
   remindAt?: string | null;
   priority?: number;
   labelIds?: number[];
+  repeat?: RepeatRule | null;
 }
 
 export interface TaskPatch {
@@ -37,6 +76,7 @@ export interface TaskPatch {
   priority?: number;
   labelIds?: number[];
   pinned?: boolean;
+  repeat?: RepeatRule | null;
 }
 
 /** A reminder that has fired, shown as an in-app toast. */
@@ -53,4 +93,6 @@ export type ViewId =
   | { kind: "pinned" }
   | { kind: "completed" }
   | { kind: "labels" }
+  | { kind: "settings" }
+  | { kind: "focus" }
   | { kind: "label"; labelId: number };
