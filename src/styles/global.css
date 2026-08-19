@@ -16,7 +16,7 @@
   /* Text */
   --color-text: #e6edf3;
   --color-muted: #9aa7b4;
-  --color-faint: #6b7885;
+  --color-faint: #788592;
 
   /* Brand / accent — a warm indigo, not neon */
   --color-accent: #6c7cff;
@@ -51,7 +51,7 @@
   --color-border-strong: #d0d6dd;
   --color-text: #1a2029;
   --color-muted: #5b6773;
-  --color-faint: #8a95a1;
+  --color-faint: #636f7b;
   --color-accent-soft: #eaecff;
 }
 
@@ -68,6 +68,22 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
+}
+
+/* Visible keyboard focus indicator on every interactive control, app-wide.
+   Scoped to Tailwind's `base` layer so a utility class (e.g.
+   `focus-visible:outline-none`) can still opt a specific element out. */
+@layer base {
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-md);
+  }
 }
 
 /* Thin, unobtrusive scrollbars */

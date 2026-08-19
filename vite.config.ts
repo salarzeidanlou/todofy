@@ -18,6 +18,7 @@ export default defineConfig(async () => ({
       input: {
         main: entry("./index.html"),
         quickadd: entry("./quickadd.html"),
+        notification: entry("./notification.html"),
       },
     },
   },

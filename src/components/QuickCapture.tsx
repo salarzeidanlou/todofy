@@ -81,10 +81,17 @@ export function QuickCapture() {
       api.listLabels().then(setLabels).catch(() => {});
       focusInput();
     });
-    // Dismiss when focus leaves (click-away), ignoring the transient blur
-    // that can fire right as the window is being shown.
+    // Focus the input as soon as the window actually gains OS-level focus —
+    // more reliable than a fixed delay, since `set_focus()` on the Rust side
+    // can land after this component has already mounted. Dismiss on
+    // click-away, ignoring the transient blur that can fire right as the
+    // window is being shown.
     const unFocus = win.onFocusChanged(({ payload: focused }) => {
-      if (!focused && Date.now() - shownAt.current > 200) dismiss();
+      if (focused) {
+        focusInput();
+      } else if (Date.now() - shownAt.current > 200) {
+        dismiss();
+      }
     });
 
     return () => {
@@ -113,7 +120,7 @@ export function QuickCapture() {
               }
             }}
             placeholder="Add a task…  “pay rent friday 5pm #home p1”"
-            class="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-[var(--color-faint)]"
+            class="min-w-0 flex-1 bg-transparent text-base outline-none focus-visible:outline-none placeholder:text-[var(--color-faint)]"
           />
           <kbd class="shrink-0 rounded-md border border-[var(--color-border)] px-1.5 py-0.5 text-[10px] text-[var(--color-faint)]">
             ↵

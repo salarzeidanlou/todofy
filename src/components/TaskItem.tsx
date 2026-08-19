@@ -188,7 +188,7 @@ export function TaskItem({ task, drag }: { task: Task; drag?: DragProps }) {
           class={`mt-0.5 shrink-0 transition-opacity ${
             tracking
               ? "text-[var(--color-danger)] opacity-100"
-              : "text-[var(--color-faint)] opacity-0 hover:text-[var(--color-accent)] group-hover:opacity-100"
+              : "text-[var(--color-faint)] opacity-0 hover:text-[var(--color-accent)] group-hover:opacity-100 group-focus-within:opacity-100"
           }`}
           title={tracking ? "Stop tracking time" : "Start tracking time"}
         >
@@ -204,7 +204,7 @@ export function TaskItem({ task, drag }: { task: Task; drag?: DragProps }) {
         class={`mt-0.5 shrink-0 transition-opacity ${
           task.pinned
             ? "text-[var(--color-accent)] opacity-100"
-            : "text-[var(--color-faint)] opacity-0 hover:text-[var(--color-text)] group-hover:opacity-100"
+            : "text-[var(--color-faint)] opacity-0 hover:text-[var(--color-text)] group-hover:opacity-100 group-focus-within:opacity-100"
         }`}
         title={task.pinned ? "Unpin" : "Pin to top"}
       >
@@ -222,7 +222,7 @@ export function TaskItem({ task, drag }: { task: Task; drag?: DragProps }) {
             onConfirm: () => removeTask(task.id),
           });
         }}
-        class="mt-0.5 text-[var(--color-faint)] opacity-0 transition-opacity hover:text-[var(--color-danger)] group-hover:opacity-100"
+        class="mt-0.5 text-[var(--color-faint)] opacity-0 transition-opacity hover:text-[var(--color-danger)] group-hover:opacity-100 group-focus-within:opacity-100"
         title="Delete"
       >
         <TrashIcon width={16} height={16} />

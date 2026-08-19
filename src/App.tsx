@@ -43,6 +43,10 @@ export function App() {
     const unlisten = listen<ActiveReminder>("reminder-fired", (e) => {
       pushReminder(e.payload);
     });
+    // The custom notification popup was clicked — jump to that task.
+    const unOpen = listen<number>("reminder-open", (e) => {
+      useStore.getState().select(e.payload);
+    });
     // Refresh when a task is added from the quick-add window.
     const unAdded = listen("todo-added", () => load());
     // The scheduler advanced the Pomodoro (e.g. a phase finished) — re-sync.
@@ -51,6 +55,7 @@ export function App() {
     const unTimers = listen("timers-changed", () => onTimersChanged());
     return () => {
       unlisten.then((off) => off());
+      unOpen.then((off) => off());
       unAdded.then((off) => off());
       unPomo.then((off) => off());
       unTimers.then((off) => off());

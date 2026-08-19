@@ -32,6 +32,9 @@ export const api = {
   getAutostart: () => invoke<boolean>("get_autostart"),
   setAutostart: (enabled: boolean) =>
     invoke<void>("set_autostart", { enabled }),
+  // Fires a test notification through the same portal path reminders use.
+  // Resolves to the delivery route ("portal" or "fallback").
+  sendTestNotification: () => invoke<string>("send_test_notification"),
 
   // Per-task stopwatch
   startTimer: (id: number) => invoke<ActiveTimer | null>("start_timer", { id }),

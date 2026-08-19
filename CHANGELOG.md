@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.4.0 — 2026-08-19
+
+### Added
+- Custom notification popup — reminders and timer nudges can show as todofy's own borderless, always-on-top card pinned to a screen corner, above other apps, instead of an OS notification. Click it to open the task; it auto-dismisses (and pauses while hovered)
+- Notification settings — choose between the in-app popup and system notifications, and pick which screen corner the popup appears in (Settings → Notifications)
+- Reminders for date-only tasks — a task with a due date but no specific time now notifies at 9:00 AM on the due day
+
+### Changed
+- Desktop notifications are now delivered through the XDG desktop portal, which is more reliable than the classic notification interface on some Linux sessions; the previous path remains as a fallback
+- The Settings "Send test" notification uses the same delivery path as real reminders and reports how it was routed
+
 ## v1.3.0 — 2026-08-16
 
 ### Added

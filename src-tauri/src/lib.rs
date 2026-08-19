@@ -1,6 +1,8 @@
 mod commands;
 mod db;
 mod models;
+mod notify;
+mod popup;
 mod quickwin;
 mod recur;
 mod scheduler;
@@ -59,8 +61,7 @@ pub fn run() {
                 .app_data_dir()
                 .expect("failed to resolve app data dir");
             std::fs::create_dir_all(&dir).ok();
-            let conn = Connection::open(dir.join("todofy.db"))
-                .expect("failed to open database");
+            let conn = Connection::open(dir.join("todofy.db")).expect("failed to open database");
             db::init(&conn).expect("failed to initialize schema");
             app.manage(Db(Mutex::new(conn)));
 
@@ -116,6 +117,9 @@ pub fn run() {
             commands::create_label,
             commands::update_label,
             commands::delete_label,
+            notify::send_test_notification,
+            popup::notify_popup_dismiss,
+            popup::notify_popup_open,
             settings::get_setting,
             settings::set_setting,
             settings::get_autostart,

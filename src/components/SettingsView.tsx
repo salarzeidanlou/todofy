@@ -3,26 +3,56 @@ import { useEffect, useState } from "preact/hooks";
 import { getVersion } from "@tauri-apps/api/app";
 import { api } from "../lib/api";
 import { useStore } from "../store";
-import { MoonIcon, PowerIcon, SunIcon } from "./Icons";
+import { BellIcon, MoonIcon, PowerIcon, SunIcon } from "./Icons";
 
 type StartupMode = "window" | "tray";
+type Corner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
+
+const CORNERS: { value: Corner; label: string }[] = [
+  { value: "top-left", label: "Top left" },
+  { value: "top-right", label: "Top right" },
+  { value: "bottom-left", label: "Bottom left" },
+  { value: "bottom-right", label: "Bottom right" },
+];
+
+// How the backend routed the test notification (see notify::deliver).
+const ROUTE_LABEL: Record<string, string> = {
+  popup: "the in-app popup",
+  portal: "the desktop portal",
+  fallback: "the fallback (classic) path",
+};
 
 export function SettingsView() {
   const { theme, toggleTheme } = useStore();
   const [autostart, setAutostart] = useState(false);
   const [mode, setMode] = useState<StartupMode>("window");
+  const [desktopNotifications, setDesktopNotifications] = useState(true);
+  const [notifStyle, setNotifStyle] = useState<"custom" | "native">("custom");
+  const [notifPosition, setNotifPosition] = useState<Corner>("bottom-right");
   const [version, setVersion] = useState("");
   const [ready, setReady] = useState(false);
+  const [testStatus, setTestStatus] = useState<
+    "idle" | "sending" | "sent" | "error"
+  >("idle");
+  const [testRoute, setTestRoute] = useState("");
 
   // Load current startup preferences from the backend.
   useEffect(() => {
     (async () => {
-      const [enabled, storedMode] = await Promise.all([
-        api.getAutostart().catch(() => false),
-        api.getSetting("startup_mode").catch(() => null),
-      ]);
+      const [enabled, storedMode, storedNotifications, style, position] =
+        await Promise.all([
+          api.getAutostart().catch(() => false),
+          api.getSetting("startup_mode").catch(() => null),
+          api.getSetting("desktop_notifications_enabled").catch(() => null),
+          api.getSetting("notification_style").catch(() => null),
+          api.getSetting("notification_position").catch(() => null),
+        ]);
       setAutostart(enabled);
       if (storedMode === "tray" || storedMode === "window") setMode(storedMode);
+      setDesktopNotifications(storedNotifications !== "false");
+      setNotifStyle(style === "native" ? "native" : "custom");
+      if (CORNERS.some((c) => c.value === position))
+        setNotifPosition(position as Corner);
       setReady(true);
     })();
     getVersion().then(setVersion).catch(() => {});
@@ -44,6 +74,51 @@ export function SettingsView() {
       await api.setSetting("startup_mode", next);
     } catch {
       /* best-effort; the current selection stays shown */
+    }
+  };
+
+  const toggleDesktopNotifications = async () => {
+    const next = !desktopNotifications;
+    setDesktopNotifications(next); // optimistic
+    try {
+      await api.setSetting("desktop_notifications_enabled", next ? "true" : "false");
+    } catch {
+      setDesktopNotifications(!next); // revert on failure
+    }
+  };
+
+  const chooseStyle = async (next: "custom" | "native") => {
+    const prev = notifStyle;
+    setNotifStyle(next); // optimistic
+    try {
+      await api.setSetting("notification_style", next);
+    } catch {
+      setNotifStyle(prev);
+    }
+  };
+
+  const choosePosition = async (next: Corner) => {
+    const prev = notifPosition;
+    setNotifPosition(next); // optimistic
+    try {
+      await api.setSetting("notification_position", next);
+    } catch {
+      setNotifPosition(prev);
+    }
+  };
+
+  const sendTestNotification = async () => {
+    setTestStatus("sending");
+    try {
+      // Goes through the same portal path reminders use; resolves to the
+      // route that delivered it ("portal" or "fallback").
+      const route = await api.sendTestNotification();
+      setTestRoute(route);
+      setTestStatus("sent");
+    } catch {
+      setTestStatus("error");
+    } finally {
+      setTimeout(() => setTestStatus("idle"), 5000);
     }
   };
 
@@ -88,6 +163,88 @@ export function SettingsView() {
               </div>
             </div>
           )}
+        </Section>
+
+        {/* Notifications */}
+        <Section title="Notifications">
+          <Row
+            icon={<BellIcon width={18} height={18} />}
+            title="Desktop notifications"
+            desc="Show a native system notification when a reminder or timer is due, in addition to the in-app toast."
+          >
+            <Switch
+              checked={desktopNotifications}
+              onChange={toggleDesktopNotifications}
+              disabled={!ready}
+            />
+          </Row>
+
+          {desktopNotifications && (
+            <div class="animate-fade-rise border-t border-[var(--color-border)] px-4 py-3.5">
+              <p class="mb-2.5 text-xs font-medium text-[var(--color-muted)]">
+                Notification style
+              </p>
+              <div class="flex flex-col gap-2">
+                <ModeOption
+                  active={notifStyle === "custom"}
+                  onSelect={() => chooseStyle("custom")}
+                  title="In-app popup"
+                  desc="Show todofy's own notification in a screen corner, above other apps."
+                />
+                <ModeOption
+                  active={notifStyle === "native"}
+                  onSelect={() => chooseStyle("native")}
+                  title="System notification"
+                  desc="Hand the notification to your desktop's notification centre."
+                />
+              </div>
+
+              {notifStyle === "custom" && (
+                <div class="mt-3.5 animate-fade-rise">
+                  <p class="mb-2 text-xs font-medium text-[var(--color-muted)]">
+                    Position on screen
+                  </p>
+                  <div class="grid grid-cols-2 gap-2">
+                    {CORNERS.map((c) => (
+                      <button
+                        key={c.value}
+                        onClick={() => choosePosition(c.value)}
+                        class={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+                          notifPosition === c.value
+                            ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-text)]"
+                            : "border-[var(--color-border)] text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
+                        }`}
+                      >
+                        {c.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div class="flex items-center gap-3 border-t border-[var(--color-border)] px-4 py-3.5">
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium text-[var(--color-text)]">
+                Test notification
+              </p>
+              <p class="mt-0.5 text-xs text-[var(--color-muted)]">
+                {testStatus === "sent"
+                  ? `Sent via ${ROUTE_LABEL[testRoute] ?? "notification"} — check your screen.`
+                  : testStatus === "error"
+                    ? "Couldn't send a notification."
+                    : "Send a one-off notification to confirm your setup."}
+              </p>
+            </div>
+            <button
+              onClick={sendTestNotification}
+              disabled={testStatus === "sending"}
+              class="shrink-0 rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)] disabled:opacity-50"
+            >
+              {testStatus === "sending" ? "Sending…" : "Send test"}
+            </button>
+          </div>
         </Section>
 
         {/* Appearance */}
