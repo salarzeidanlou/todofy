@@ -12,7 +12,6 @@ use crate::models::{ActiveTimer, Pomodoro, SessionLog};
 use chrono::{DateTime, Local};
 use rusqlite::{params, Connection, OptionalExtension};
 use tauri::{AppHandle, Emitter, Manager, State};
-use tauri_plugin_notification::NotificationExt;
 
 fn now_iso() -> String {
     Local::now().to_rfc3339()
@@ -246,7 +245,7 @@ pub fn set_pomodoro_config(
 /// Called from the scheduler thread. Fires reminder notifications for a
 /// finished Pomodoro phase and for long-running stopwatch sessions, without
 /// stopping either timer.
-pub fn poll(app: &AppHandle) {
+pub fn poll(app: &AppHandle, notifications_enabled: bool) {
     let db = app.state::<Db>();
     let conn = db.conn();
     let mut pomodoro_changed = false;
@@ -256,7 +255,9 @@ pub fn poll(app: &AppHandle) {
         if p.running {
             let elapsed = p.accumulated + p.start_at.as_deref().map(secs_since).unwrap_or(0);
             let notified: i64 = conn
-                .query_row("SELECT notified FROM pomodoro WHERE id = 1", [], |r| r.get(0))
+                .query_row("SELECT notified FROM pomodoro WHERE id = 1", [], |r| {
+                    r.get(0)
+                })
                 .unwrap_or(0);
             if elapsed >= p.target && notified == 0 {
                 let (title, body) = if p.phase == "focus" {
@@ -264,7 +265,9 @@ pub fn poll(app: &AppHandle) {
                 } else {
                     ("Break's over", "Back to focus · todofy")
                 };
-                let _ = app.notification().builder().title(title).body(body).show();
+                if notifications_enabled {
+                    crate::notify::send(app, title, body, None);
+                }
                 let _ = conn.execute("UPDATE pomodoro SET notified = 1 WHERE id = 1", []);
                 pomodoro_changed = true;
             }
@@ -284,12 +287,14 @@ pub fn poll(app: &AppHandle) {
         for (id, title, start, notified) in rows {
             let hours = secs_since(&start) / 3600;
             if hours > notified {
-                let _ = app
-                    .notification()
-                    .builder()
-                    .title("Still tracking time")
-                    .body(format!("“{title}” — {hours}h and counting · todofy"))
-                    .show();
+                if notifications_enabled {
+                    crate::notify::send(
+                        app,
+                        "Still tracking time",
+                        &format!("“{title}” — {hours}h and counting · todofy"),
+                        None,
+                    );
+                }
                 let _ = conn.execute(
                     "UPDATE time_sessions SET notified = ?1 WHERE id = ?2",
                     params![hours, id],
@@ -340,7 +345,12 @@ pub fn tray_display(app: &AppHandle) -> (String, String, String, bool) {
 
     let task_running = active.is_some();
     let pomo_running = pomo.as_ref().map(|p| p.running).unwrap_or(false);
-    let pomo_label = if pomo_running { "Pause focus" } else { "Start focus" }.to_string();
+    let pomo_label = if pomo_running {
+        "Pause focus"
+    } else {
+        "Start focus"
+    }
+    .to_string();
 
     let mut title = String::new();
     let mut parts: Vec<String> = Vec::new();

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "notification",
+  "description": "Capability for the notification popup window",
+  "windows": ["notification"],
+  "permissions": ["core:default", "core:window:allow-hide"]
+}

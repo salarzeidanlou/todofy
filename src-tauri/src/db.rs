@@ -12,7 +12,9 @@ impl Db {
     /// the connection only briefly and leaves it in a consistent state, so the
     /// data is safe to keep using.
     pub fn conn(&self) -> MutexGuard<'_, Connection> {
-        self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 }
 
@@ -118,9 +120,15 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     // install (it's in the CREATE TABLE above), so it's guarded on its
     // own; the index is unconditional since it's needed either way.
     if !column_exists(conn, "tasks", "pinned") {
-        conn.execute("ALTER TABLE tasks ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0", [])?;
+        conn.execute(
+            "ALTER TABLE tasks ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
     }
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_pinned ON tasks(pinned)", [])?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_pinned ON tasks(pinned)",
+        [],
+    )?;
 
     // Recurring tasks: completing one rolls its due date / reminder forward to
     // the next occurrence instead of marking it done (see `recur.rs`).

@@ -204,7 +204,9 @@ pub fn toggle_task(db: State<Db>, id: i64, done: bool) -> CmdResult<Task> {
 
         if let Some(rule) = repeat.as_deref().filter(|s| !s.is_empty()) {
             if let Some(next_due) = due.as_deref().and_then(|d| recur::advance_due(d, rule)) {
-                let next_remind = remind.as_deref().and_then(|r| recur::advance_remind(r, rule));
+                let next_remind = remind
+                    .as_deref()
+                    .and_then(|r| recur::advance_remind(r, rule));
                 conn.execute(
                     "UPDATE tasks SET due_date = ?1, remind_at = ?2, notified = 0 WHERE id = ?3",
                     params![next_due, next_remind, id],

@@ -32,7 +32,7 @@ Smart lists, labels, recurring tasks, focus timers, and reminders that actually 
 - ✅ **Completed view** — every finished task, app-wide, newest first
 - 🏷️ **Labels** — create, rename, recolor (with a full custom color picker), and delete; a searchable Labels page plus per-label filtering
 - 📆 **Beautiful date & time picker** — click the month or year to jump anywhere in seconds
-- ⏰ **Reminders that reach you** — native desktop notifications fire **even when hidden in the tray**, plus in‑app toasts and one‑tap **snooze**
+- ⏰ **Reminders that reach you** — desktop notifications fire **even when hidden in the tray**, as either a system notification or todofy's own popup card pinned to a screen corner, with one‑tap **snooze**
 - 🚩 **Priorities** — P1–P4 with color‑coded flags
 - ⚙️ **Settings & run‑on‑startup** — launch todofy at login, opening the window or starting quietly in the tray
 - 🌗 **Light & dark themes** — dark by default, remembers your choice
@@ -54,18 +54,18 @@ Grab a package from the [Releases](../../releases) page, or build it yourself (s
 
 **AppImage** — portable, runs on any distro:
 ```bash
-chmod +x todofy_1.3.0_amd64.AppImage
-./todofy_1.3.0_amd64.AppImage
+chmod +x todofy_1.4.0_amd64.AppImage
+./todofy_1.4.0_amd64.AppImage
 ```
 
 **Debian / Ubuntu:**
 ```bash
-sudo dpkg -i todofy_1.3.0_amd64.deb
+sudo dpkg -i todofy_1.4.0_amd64.deb
 ```
 
 **Fedora / RHEL / openSUSE:**
 ```bash
-sudo rpm -i todofy-1.3.0-1.x86_64.rpm
+sudo rpm -i todofy-1.4.0-1.x86_64.rpm
 ```
 
 > Your tasks live at `~/.local/share/com.unifybrowse.todofy/todofy.db`.
@@ -149,6 +149,8 @@ todofy/
 │       ├── timer.rs        # focus timers (Pomodoro + per-task stopwatch)
 │       ├── settings.rs     # app settings & run-on-startup
 │       ├── scheduler.rs    # background reminders + timer nudges
+│       ├── notify.rs       # notification delivery (portal / native)
+│       ├── popup.rs        # custom corner notification window
 │       ├── tray.rs         # system tray + live timer controls
 │       └── lib.rs          # app setup
 └── app-icon.svg            # source for the app icon
