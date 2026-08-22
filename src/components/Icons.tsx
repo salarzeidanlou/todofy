@@ -228,6 +228,12 @@ export const PowerIcon = (p: P) => (
   </svg>
 );
 
+export const BoltIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
+  </svg>
+);
+
 /** The todofy brand mark — a rounded accent square with a check. */
 export const Logo = ({ size = 28 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">

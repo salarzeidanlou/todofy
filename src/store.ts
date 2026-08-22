@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { api } from "./lib/api";
-import { snoozeFrom, toLocalDate, today } from "./lib/dates";
+import { combineDateTime, snoozeFrom, timeOf, toLocalDate, today } from "./lib/dates";
 import { sectionsForView } from "./lib/grouping";
 import { applyTheme, initialTheme, type Theme } from "./lib/theme";
 import type {
@@ -37,11 +37,19 @@ interface State {
   pomodoro: Pomodoro | null;
   showFocus: boolean;
 
+  showShortcuts: boolean;
+  /** Bumped to a timestamp each time a task is completed, to fire a celebration. */
+  celebrationAt: number | null;
+  /** Whether to play the little celebration when a task is completed. */
+  celebrate: boolean;
+
   load: () => Promise<void>;
   setView: (view: ViewId) => void;
   select: (id: number | null) => void;
   toggleTheme: () => void;
   toggleSidebar: () => void;
+  toggleShortcuts: (open?: boolean) => void;
+  toggleCelebrate: () => void;
   pushReminder: (r: ActiveReminder) => void;
   dismissReminder: (id: number) => void;
   requestConfirm: (opts: ConfirmOptions) => void;
@@ -52,6 +60,7 @@ interface State {
   reorderTask: (id: number, orderIndex: number) => Promise<void>;
   toggleTask: (id: number, done: boolean) => Promise<void>;
   snoozeTask: (id: number, minutes: number) => Promise<void>;
+  rescheduleOverdue: () => Promise<void>;
   removeTask: (id: number) => Promise<void>;
 
   addLabel: (name: string, color: string) => Promise<Label>;
@@ -91,6 +100,10 @@ export const useStore = create<State>((set, get) => ({
   pomodoro: null,
   showFocus: false,
 
+  showShortcuts: false,
+  celebrationAt: null,
+  celebrate: localStorage.getItem("todofy-celebrate") !== "off",
+
   load: async () => {
     set({ loading: true });
     const [tasks, labels] = await Promise.all([
@@ -113,6 +126,15 @@ export const useStore = create<State>((set, get) => ({
     const sidebarCollapsed = !get().sidebarCollapsed;
     localStorage.setItem("todofy-sidebar", sidebarCollapsed ? "collapsed" : "expanded");
     set({ sidebarCollapsed });
+  },
+
+  toggleShortcuts: (open) =>
+    set({ showShortcuts: open ?? !get().showShortcuts }),
+
+  toggleCelebrate: () => {
+    const celebrate = !get().celebrate;
+    localStorage.setItem("todofy-celebrate", celebrate ? "on" : "off");
+    set({ celebrate });
   },
 
   pushReminder: (r) =>
@@ -158,6 +180,12 @@ export const useStore = create<State>((set, get) => ({
     const updated = await api.toggleTask(id, done);
     set({
       tasks: get().tasks.map((t) => (t.id === updated.id ? updated : t)),
+      // A little dopamine hit on completion (a recurring task rolls forward and
+      // stays active, so only celebrate when it actually became done).
+      celebrationAt:
+        done && get().celebrate && updated.status === "done"
+          ? Date.now()
+          : get().celebrationAt,
     });
   },
 
@@ -171,6 +199,39 @@ export const useStore = create<State>((set, get) => ({
       dueDate: toLocalDate(new Date(iso)),
       remindAt: iso,
     });
+  },
+
+  // Pull every overdue active task forward to today in one move — a quick way
+  // out of the "pile of red" that tends to cause avoidance/freeze. A task's
+  // reminder time (if any) is kept but re-anchored to today.
+  rescheduleOverdue: async () => {
+    const t = today();
+    const overdue = get().tasks.filter(
+      (x) => x.status === "active" && x.dueDate && x.dueDate < t,
+    );
+    if (overdue.length === 0) return;
+    const patches = overdue.map((task) => ({
+      id: task.id,
+      dueDate: t,
+      remindAt: task.remindAt
+        ? combineDateTime(t, timeOf(task.remindAt))
+        : task.remindAt,
+    }));
+    // Optimistically apply, then persist each; fall back to a reload on error.
+    const byId = new Map(patches.map((p) => [p.id, p]));
+    set({
+      tasks: sortTasks(
+        get().tasks.map((x) => {
+          const p = byId.get(x.id);
+          return p ? { ...x, dueDate: p.dueDate, remindAt: p.remindAt } : x;
+        }),
+      ),
+    });
+    try {
+      await Promise.all(patches.map((p) => api.updateTask(p)));
+    } catch {
+      await get().load();
+    }
   },
 
   removeTask: async (id) => {

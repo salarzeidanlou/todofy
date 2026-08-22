@@ -1,5 +1,6 @@
 import { tasksForView, useStore } from "../store";
 import { sectionsForView } from "../lib/grouping";
+import { completionStats } from "../lib/streak";
 import type { Task, ViewId } from "../types";
 import { QuickAdd } from "./QuickAdd";
 import { TaskItem } from "./TaskItem";
@@ -55,7 +56,7 @@ function viewSubtitle(view: ViewId): string {
 }
 
 export function TaskList() {
-  const { tasks, labels, view, loading } = useStore();
+  const { tasks, labels, view, loading, rescheduleOverdue } = useStore();
   if (view.kind === "labels") return <LabelsView />;
   if (view.kind === "settings") return <SettingsView />;
   if (view.kind === "focus") return <FocusView />;
@@ -67,6 +68,10 @@ export function TaskList() {
 
   const isCompletedView = view.kind === "completed";
   const showQuickAdd = view.kind !== "completed" && view.kind !== "pinned";
+  const stats = completionStats(tasks);
+  const showStats =
+    (view.kind === "today" || view.kind === "completed") &&
+    (stats.doneToday > 0 || stats.streak > 0);
 
   const inView = tasksForView(tasks, view);
   const active = inView.filter((t) => t.status === "active");
@@ -78,9 +83,31 @@ export function TaskList() {
   return (
     <main class="flex flex-1 flex-col overflow-hidden bg-[var(--color-bg)]">
       <header class="shrink-0 px-8 pt-8 pb-4">
-        <h2 class="text-2xl font-semibold tracking-tight">
-          {viewTitle(view, labelName)}
-        </h2>
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-2xl font-semibold tracking-tight">
+            {viewTitle(view, labelName)}
+          </h2>
+          {showStats && (
+            <div class="flex items-center gap-2 text-xs">
+              {stats.doneToday > 0 && (
+                <span
+                  class="inline-flex items-center gap-1 rounded-full bg-[var(--color-surface)] px-2.5 py-1 font-medium text-[var(--color-success)]"
+                  title={`${stats.doneToday} completed today`}
+                >
+                  ✓ {stats.doneToday} today
+                </span>
+              )}
+              {stats.streak > 1 && (
+                <span
+                  class="inline-flex items-center gap-1 rounded-full bg-[var(--color-surface)] px-2.5 py-1 font-medium text-[var(--color-warning)]"
+                  title={`${stats.streak}-day completion streak`}
+                >
+                  🔥 {stats.streak}-day streak
+                </span>
+              )}
+            </div>
+          )}
+        </div>
         <p class="mt-0.5 text-sm text-[var(--color-muted)]">
           {viewSubtitle(view)}
         </p>
@@ -102,18 +129,29 @@ export function TaskList() {
             {sections.map((section) => (
               <div key={section.key} class="mb-5">
                 {section.title && (
-                  <p
-                    class={`mb-1 px-3 text-xs font-semibold uppercase tracking-wider ${
-                      section.tone === "overdue"
-                        ? "text-[var(--color-danger)]"
-                        : "text-[var(--color-faint)]"
-                    }`}
-                  >
-                    {section.title}
-                    <span class="ml-1.5 font-normal opacity-70">
-                      {section.tasks.length}
-                    </span>
-                  </p>
+                  <div class="mb-1 flex items-center justify-between px-3">
+                    <p
+                      class={`text-xs font-semibold uppercase tracking-wider ${
+                        section.tone === "overdue"
+                          ? "text-[var(--color-danger)]"
+                          : "text-[var(--color-faint)]"
+                      }`}
+                    >
+                      {section.title}
+                      <span class="ml-1.5 font-normal opacity-70">
+                        {section.tasks.length}
+                      </span>
+                    </p>
+                    {section.tone === "overdue" && (
+                      <button
+                        onClick={() => rescheduleOverdue()}
+                        class="rounded-md px-2 py-0.5 text-xs font-medium text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface)] hover:text-[var(--color-text)]"
+                        title="Move all overdue tasks to today"
+                      >
+                        Reschedule to today
+                      </button>
+                    )}
+                  </div>
                 )}
                 <TaskSection
                   tasks={section.tasks}
@@ -154,12 +192,44 @@ function Empty({ view }: { view: ViewId }) {
             : view.kind === "completed"
               ? "Nothing completed yet."
               : "No tasks with this label yet.";
+  // Views where adding a task makes sense — surface the global capture hotkey.
+  const showHint =
+    view.kind === "inbox" ||
+    view.kind === "today" ||
+    view.kind === "upcoming" ||
+    view.kind === "label";
   return (
     <div class="mt-16 flex flex-col items-center gap-2 text-center">
       <div class="grid h-14 w-14 place-items-center rounded-2xl bg-[var(--color-surface)] text-2xl">
         🗒️
       </div>
       <p class="text-sm text-[var(--color-muted)]">{msg}</p>
+      {showHint && (
+        <p class="mt-1 text-xs text-[var(--color-faint)]">
+          Tip: press{" "}
+          <kbd class="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 font-sans text-[var(--color-muted)]">
+            Ctrl
+          </kbd>{" "}
+          +{" "}
+          <kbd class="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 font-sans text-[var(--color-muted)]">
+            Alt
+          </kbd>{" "}
+          +{" "}
+          <kbd class="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 font-sans text-[var(--color-muted)]">
+            A
+          </kbd>{" "}
+          anywhere to capture a task.
+        </p>
+      )}
+      {showHint && (
+        <p class="text-xs text-[var(--color-faint)]">
+          Press{" "}
+          <kbd class="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 font-sans text-[var(--color-muted)]">
+            ?
+          </kbd>{" "}
+          for keyboard shortcuts.
+        </p>
+      )}
     </div>
   );
 }

@@ -10,29 +10,54 @@ export function today(): string {
   return toLocalDate(new Date());
 }
 
-/** Human label for a due date relative to today. */
+/**
+ * Human label for a due date, phrased relative to today ("in 3 days",
+ * "2 weeks ago") rather than as a bare calendar date. Relative wording is
+ * easier to act on for anyone with time-blindness; far-off dates fall back to
+ * an absolute date so they stay unambiguous.
+ */
 export function formatDue(date: string): {
   label: string;
   tone: "overdue" | "today" | "soon" | "future";
 } {
   const t = today();
-  if (date < t) return { label: relative(date), tone: "overdue" };
-  if (date === t) return { label: "Today", tone: "today" };
+  const days = daysBetween(t, date);
 
-  const tomorrow = toLocalDate(new Date(Date.now() + 86400000));
-  if (date === tomorrow) return { label: "Tomorrow", tone: "soon" };
+  if (days === 0) return { label: "Today", tone: "today" };
+  if (days === 1) return { label: "Tomorrow", tone: "soon" };
+  if (days === -1) return { label: "Yesterday", tone: "overdue" };
 
-  const d = new Date(date + "T00:00:00");
-  const withinWeek = (d.getTime() - Date.now()) / 86400000 < 7;
-  const opts: Intl.DateTimeFormatOptions = withinWeek
-    ? { weekday: "long" }
-    : { month: "short", day: "numeric" };
-  return { label: d.toLocaleDateString(undefined, opts), tone: "future" };
+  if (days > 1) return { label: relativeFuture(date, days), tone: "future" };
+  return { label: relativePast(date, -days), tone: "overdue" };
 }
 
-function relative(date: string): string {
+/** Whole-day difference between two YYYY-MM-DD dates (b - a), calendar-based. */
+function daysBetween(a: string, b: string): number {
+  const start = new Date(a + "T00:00:00").getTime();
+  const end = new Date(b + "T00:00:00").getTime();
+  return Math.round((end - start) / 86400000);
+}
+
+function absoluteDate(date: string): string {
   const d = new Date(date + "T00:00:00");
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
+}
+
+function relativeFuture(date: string, days: number): string {
+  if (days <= 13) return `in ${days} days`;
+  if (days <= 30) return `in ${Math.round(days / 7)} weeks`;
+  return absoluteDate(date);
+}
+
+function relativePast(date: string, days: number): string {
+  if (days <= 13) return `${days} days ago`;
+  if (days <= 30) return `${Math.round(days / 7)} weeks ago`;
+  return absoluteDate(date);
 }
 
 /** Convert a stored ISO/UTC datetime to a value for <input type=datetime-local>. */

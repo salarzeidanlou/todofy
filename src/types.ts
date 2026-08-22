@@ -7,6 +7,13 @@ export interface Label {
 /** How a task repeats. Completing it rolls the due date to the next occurrence. */
 export type RepeatRule = "daily" | "weekdays" | "weekly" | "monthly" | "yearly";
 
+/** A single checklist step under a task. `id` is unique within its task. */
+export interface Subtask {
+  id: number;
+  text: string;
+  done: boolean;
+}
+
 export interface Task {
   id: number;
   title: string;
@@ -22,6 +29,7 @@ export interface Task {
   repeat: RepeatRule | null;
   trackedSeconds: number;
   labelIds: number[];
+  subtasks: Subtask[];
 }
 
 /** The currently running per-task stopwatch. */
@@ -77,6 +85,7 @@ export interface TaskPatch {
   labelIds?: number[];
   pinned?: boolean;
   repeat?: RepeatRule | null;
+  subtasks?: Subtask[];
 }
 
 /** A reminder that has fired, shown as an in-app toast. */

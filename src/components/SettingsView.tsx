@@ -3,7 +3,14 @@ import { useEffect, useState } from "preact/hooks";
 import { getVersion } from "@tauri-apps/api/app";
 import { api } from "../lib/api";
 import { useStore } from "../store";
-import { BellIcon, MoonIcon, PowerIcon, SunIcon } from "./Icons";
+import {
+  BellIcon,
+  BoltIcon,
+  CheckCircleIcon,
+  MoonIcon,
+  PowerIcon,
+  SunIcon,
+} from "./Icons";
 
 type StartupMode = "window" | "tray";
 type Corner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
@@ -23,7 +30,8 @@ const ROUTE_LABEL: Record<string, string> = {
 };
 
 export function SettingsView() {
-  const { theme, toggleTheme } = useStore();
+  const { theme, toggleTheme, celebrate, toggleCelebrate, toggleShortcuts } =
+    useStore();
   const [autostart, setAutostart] = useState(false);
   const [mode, setMode] = useState<StartupMode>("window");
   const [desktopNotifications, setDesktopNotifications] = useState(true);
@@ -165,6 +173,19 @@ export function SettingsView() {
           )}
         </Section>
 
+        {/* Quick capture */}
+        <Section title="Quick capture">
+          <Row
+            icon={<BoltIcon width={18} height={18} />}
+            title="Global quick-add hotkey"
+            desc="Press this from any app to pop up todofy's capture box — jot a task and it's saved to your inbox without switching windows."
+          >
+            <kbd class="shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2.5 py-1 text-xs font-medium text-[var(--color-muted)]">
+              Ctrl + Alt + A
+            </kbd>
+          </Row>
+        </Section>
+
         {/* Notifications */}
         <Section title="Notifications">
           <Row
@@ -265,6 +286,29 @@ export function SettingsView() {
               class="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
             >
               Switch to {theme === "dark" ? "light" : "dark"}
+            </button>
+          </Row>
+
+          <Row
+            icon={<CheckCircleIcon width={18} height={18} />}
+            title="Celebrate completions"
+            desc="Play a little confetti burst when you finish a task. Automatically skipped if your system prefers reduced motion."
+          >
+            <Switch checked={celebrate} onChange={toggleCelebrate} />
+          </Row>
+        </Section>
+
+        {/* Keyboard */}
+        <Section title="Keyboard">
+          <Row
+            title="Keyboard shortcuts"
+            desc="Navigate and edit without the mouse. Press ? anytime to open this list."
+          >
+            <button
+              onClick={() => toggleShortcuts(true)}
+              class="shrink-0 rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
+            >
+              View shortcuts
             </button>
           </Row>
         </Section>

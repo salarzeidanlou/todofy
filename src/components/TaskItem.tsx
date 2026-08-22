@@ -4,6 +4,7 @@ import { formatDue } from "../lib/dates";
 import type { Task } from "../types";
 import {
   BellIcon,
+  CheckCircleIcon,
   CheckIcon,
   FlagIcon,
   GripIcon,
@@ -36,10 +37,8 @@ interface DragProps {
   reorderable?: boolean;
   dragging?: boolean;
   dropEdge?: "top" | "bottom" | null;
-  onDragStart?: (e: JSX.TargetedDragEvent<HTMLDivElement>) => void;
-  onDragOver?: (e: JSX.TargetedDragEvent<HTMLDivElement>) => void;
-  onDrop?: (e: JSX.TargetedDragEvent<HTMLDivElement>) => void;
-  onDragEnd?: (e: JSX.TargetedDragEvent<HTMLDivElement>) => void;
+  rowRef?: (el: HTMLElement | null) => void;
+  onHandlePointerDown?: (e: JSX.TargetedPointerEvent<HTMLElement>) => void;
 }
 
 export function TaskItem({ task, drag }: { task: Task; drag?: DragProps }) {
@@ -59,25 +58,31 @@ export function TaskItem({ task, drag }: { task: Task; drag?: DragProps }) {
   const selected = selectedId === task.id;
   const taskLabels = labels.filter((l) => task.labelIds.includes(l.id));
   const due = task.dueDate ? formatDue(task.dueDate) : null;
+  const overdue = !done && due?.tone === "overdue";
   const hasReminder = !!task.remindAt;
   const repeats = !!task.repeat;
+  const subtaskTotal = task.subtasks.length;
+  const subtaskDone = task.subtasks.filter((s) => s.done).length;
+  const allSubtasksDone = subtaskTotal > 0 && subtaskDone === subtaskTotal;
   const tracking = activeTimer?.taskId === task.id;
   const reorderable = !!drag?.reorderable;
 
   return (
     <div
+      ref={drag?.rowRef}
       onClick={() => select(task.id)}
-      draggable={reorderable}
-      onDragStart={drag?.onDragStart}
-      onDragOver={drag?.onDragOver}
-      onDrop={drag?.onDrop}
-      onDragEnd={drag?.onDragEnd}
       class={`group relative flex animate-fade-rise cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
         selected
           ? "border-[var(--color-border-strong)] bg-[var(--color-surface)]"
           : "border-transparent hover:border-[var(--color-border)] hover:bg-[var(--color-surface)]"
       } ${drag?.dragging ? "opacity-40" : ""}`}
     >
+      {overdue && (
+        <span
+          class="pointer-events-none absolute inset-y-1.5 left-0 w-[3px] rounded-full bg-[var(--color-danger)]"
+          title="Overdue"
+        />
+      )}
       {drag?.dropEdge === "top" && (
         <span class="pointer-events-none absolute -top-[3px] left-2 right-2 h-0.5 rounded-full bg-[var(--color-accent)]" />
       )}
@@ -86,7 +91,9 @@ export function TaskItem({ task, drag }: { task: Task; drag?: DragProps }) {
       )}
       {reorderable && (
         <span
-          class="mt-0.5 -ml-1 shrink-0 cursor-grab text-[var(--color-faint)] opacity-0 transition-opacity active:cursor-grabbing group-hover:opacity-100"
+          onPointerDown={drag?.onHandlePointerDown}
+          onClick={(e) => e.stopPropagation()}
+          class="mt-0.5 -ml-1 shrink-0 touch-none cursor-grab text-[var(--color-faint)] opacity-0 transition-opacity active:cursor-grabbing group-hover:opacity-100"
           title="Drag to reorder"
         >
           <GripIcon width={14} height={14} />
@@ -118,8 +125,21 @@ export function TaskItem({ task, drag }: { task: Task; drag?: DragProps }) {
         >
           {task.title}
         </p>
-        {(due || hasReminder || repeats || task.trackedSeconds > 0 || task.priority < 4 || taskLabels.length > 0) && (
+        {(due || hasReminder || repeats || subtaskTotal > 0 || task.trackedSeconds > 0 || task.priority < 4 || taskLabels.length > 0) && (
           <div class="mt-1 flex flex-wrap items-center gap-2">
+            {subtaskTotal > 0 && (
+              <span
+                class={`inline-flex items-center gap-1 text-xs ${
+                  allSubtasksDone
+                    ? "text-[var(--color-success)]"
+                    : "text-[var(--color-faint)]"
+                }`}
+                title={`${subtaskDone} of ${subtaskTotal} steps done`}
+              >
+                <CheckCircleIcon width={12} height={12} />
+                {subtaskDone}/{subtaskTotal}
+              </span>
+            )}
             {task.priority < 4 && (
               <span
                 class="inline-flex items-center gap-0.5 text-xs font-medium"

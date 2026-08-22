@@ -20,6 +20,16 @@ pub struct Label {
     pub color: String,
 }
 
+/// A single checklist step under a task. Stored as a JSON array in the
+/// `tasks.subtasks` column; ids are unique only within their parent task and
+/// are assigned by the frontend.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Subtask {
+    pub id: i64,
+    pub text: String,
+    pub done: bool,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Task {
@@ -40,6 +50,8 @@ pub struct Task {
     pub tracked_seconds: i64,
     /// Label ids attached to this task.
     pub label_ids: Vec<i64>,
+    /// Checklist steps for breaking the task into smaller chunks.
+    pub subtasks: Vec<Subtask>,
 }
 
 /// Payload for creating a task. Everything but `title` is optional.
@@ -73,6 +85,8 @@ pub struct TaskPatch {
     /// `Some(None)` clears the recurrence; `Some(Some(rule))` sets it.
     #[serde(default, deserialize_with = "double_option")]
     pub repeat: Option<Option<String>>,
+    /// When present, replaces the whole checklist (like `label_ids`).
+    pub subtasks: Option<Vec<Subtask>>,
 }
 
 /// The currently running per-task stopwatch, if any.

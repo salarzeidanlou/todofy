@@ -39,6 +39,22 @@ export function useKeyboard() {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       const s = useStore.getState();
+
+      // The shortcuts cheat-sheet: "?" opens it, Escape closes it (and takes
+      // priority over the panel-close Escape below).
+      if (e.key === "?") {
+        e.preventDefault();
+        s.toggleShortcuts();
+        return;
+      }
+      if (s.showShortcuts) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          s.toggleShortcuts(false);
+        }
+        return;
+      }
+
       const ids = visibleTaskIds(s.tasks, s.view);
       const move = (dir: 1 | -1) => {
         if (ids.length === 0) return;

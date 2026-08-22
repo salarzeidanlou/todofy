@@ -15,6 +15,10 @@ Smart lists, labels, recurring tasks, focus timers, and reminders that actually 
 ![Rust](https://img.shields.io/badge/Rust-stable-000000?style=flat-square&logo=rust&logoColor=white)
 ![License](https://img.shields.io/badge/license-source--available-6c7cff?style=flat-square)
 
+<br />
+
+<img src="docs/today.png" alt="todofy — Today view with overdue rollup, labels, priorities, subtask progress, and a completion streak" width="900" />
+
 </div>
 
 ---
@@ -30,6 +34,8 @@ Smart lists, labels, recurring tasks, focus timers, and reminders that actually 
 - ✋ **Drag‑and‑drop reordering** — grab any task and drop it exactly where you want; your manual order sticks
 - 📌 **Pinning** — pin any task to float it to the top of its group, with a dedicated *Pinboard* view
 - ✅ **Completed view** — every finished task, app-wide, newest first
+- ☑️ **Subtasks / checklists** — break a big task into steps with a live progress bar, so it's easier to start and keep momentum
+- 🧠 **ADHD-friendly touches** — relative due dates (*"in 3 days"*), a completion streak & confetti reward (both optional and motion-safe), and a `?` shortcut cheat-sheet
 - 🏷️ **Labels** — create, rename, recolor (with a full custom color picker), and delete; a searchable Labels page plus per-label filtering
 - 📆 **Beautiful date & time picker** — click the month or year to jump anywhere in seconds
 - ⏰ **Reminders that reach you** — desktop notifications fire **even when hidden in the tray**, as either a system notification or todofy's own popup card pinned to a screen corner, with one‑tap **snooze**
@@ -41,12 +47,37 @@ Smart lists, labels, recurring tasks, focus timers, and reminders that actually 
 - 🧭 **Collapsible sidebar** — go full or minimal
 - 💾 **Local‑first** — everything is stored in a local SQLite database; no account, no cloud, no tracking
 
-<div align="center">
+## 📸 Screenshots
 
-<!-- Add a screenshot at docs/screenshot.png to show it off -->
-<!-- ![todofy screenshot](docs/screenshot.png) -->
-
-</div>
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/detail.png" alt="Task detail with a checklist / subtasks and progress bar" /><br />
+      <sub><b>Task detail</b> — break a task into a checklist with live progress.</sub>
+    </td>
+    <td width="50%">
+      <img src="docs/upcoming.png" alt="Upcoming view with relative due dates grouped by day" /><br />
+      <sub><b>Upcoming</b> — due dates phrased relatively ("in 3 days").</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/focus.png" alt="Focus screen with a running Pomodoro timer and phase lengths" /><br />
+      <sub><b>Focus</b> — a built-in Pomodoro with tunable phases and history.</sub>
+    </td>
+    <td width="50%">
+      <img src="docs/shortcuts.png" alt="Keyboard shortcuts cheat-sheet overlay" /><br />
+      <sub><b>Keyboard-first</b> — press <code>?</code> for the full cheat-sheet.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/detail-light.png" alt="todofy in its light theme" /><br />
+      <sub><b>Light theme</b> — dark by default, light when you want it.</sub>
+    </td>
+    <td width="50%"></td>
+  </tr>
+</table>
 
 ## 📦 Install
 
@@ -54,18 +85,18 @@ Grab a package from the [Releases](../../releases) page, or build it yourself (s
 
 **AppImage** — portable, runs on any distro:
 ```bash
-chmod +x todofy_1.4.0_amd64.AppImage
-./todofy_1.4.0_amd64.AppImage
+chmod +x todofy_1.5.0_amd64.AppImage
+./todofy_1.5.0_amd64.AppImage
 ```
 
 **Debian / Ubuntu:**
 ```bash
-sudo dpkg -i todofy_1.4.0_amd64.deb
+sudo dpkg -i todofy_1.5.0_amd64.deb
 ```
 
 **Fedora / RHEL / openSUSE:**
 ```bash
-sudo rpm -i todofy-1.4.0-1.x86_64.rpm
+sudo rpm -i todofy-1.5.0-1.x86_64.rpm
 ```
 
 > Your tasks live at `~/.local/share/com.unifybrowse.todofy/todofy.db`.
@@ -82,7 +113,8 @@ sudo rpm -i todofy-1.4.0-1.x86_64.rpm
 | `c` / `Enter` | Complete / uncomplete the selected task |
 | `p` | Pin / unpin the selected task |
 | `Backspace` / `Delete` | Delete the selected task |
-| `Esc` | Close the detail panel / picker |
+| `?` | Show the keyboard shortcuts cheat-sheet |
+| `Esc` | Close the detail panel / picker / cheat-sheet |
 
 ## 🛠️ Build from source
 
@@ -163,8 +195,8 @@ todofy/
 - [x] Recurring tasks
 - [x] Focus timers (Pomodoro + per‑task time tracking)
 - [x] Run on startup
+- [x] Subtasks & checklists
 - [ ] Search & filters
-- [ ] Subtasks & checklists
 
 ## 🤝 Contributing
 

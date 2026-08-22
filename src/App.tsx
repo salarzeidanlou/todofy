@@ -14,6 +14,8 @@ import { TaskDetail } from "./components/TaskDetail";
 import { ReminderToasts } from "./components/ReminderToasts";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { FocusWidget } from "./components/FocusWidget";
+import { ShortcutsOverlay } from "./components/ShortcutsOverlay";
+import { Celebration } from "./components/Celebration";
 import { ChevronLeftIcon, ChevronRightIcon } from "./components/Icons";
 
 export function App() {
@@ -26,6 +28,8 @@ export function App() {
   const tasks = useStore((s) => s.tasks);
   const collapsed = useStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useStore((s) => s.toggleSidebar);
+  const selectedId = useStore((s) => s.selectedId);
+  const select = useStore((s) => s.select);
 
   useKeyboard();
 
@@ -90,10 +94,25 @@ export function App() {
       </button>
 
       <TaskList />
+
+      {/* Click-away layer: while the detail panel is open, clicking anywhere
+          in the main area dismisses it. It sits above the list (z-30) but
+          below the panel (z-40), and starts to the right of the sidebar so
+          the sidebar stays interactive. */}
+      {selectedId != null && (
+        <div
+          onClick={() => select(null)}
+          style={{ left: `${collapsed ? 56 : 256}px` }}
+          class="absolute inset-y-0 right-0 z-30"
+        />
+      )}
+
       <TaskDetail />
       <FocusWidget />
       <ReminderToasts />
       <ConfirmDialog />
+      <ShortcutsOverlay />
+      <Celebration />
     </div>
   );
 }
