@@ -128,3 +128,34 @@ body {
 .animate-slide-left {
   animation: slide-left 0.2s ease-out;
 }
+
+/* A quick confetti burst on task completion. Each piece is translated to its
+   own (--dx,--dy) offset and spun by (--rot), then fades. Disabled wholesale
+   by the reduced-motion block below. */
+@keyframes confetti {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) rotate(var(--rot));
+  }
+}
+.animate-confetti {
+  animation: confetti 0.9s ease-out forwards;
+}
+
+/* Respect the OS "reduce motion" setting. Motion can be distracting or
+   overstimulating (a common ADHD/vestibular concern), so when it's on we
+   strip entrance animations, transitions, and smooth scrolling app-wide. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

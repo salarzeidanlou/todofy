@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.5.0 — 2026-08-22
+
+### Added
+- Subtasks / checklists — break a task into steps in the detail panel, with a live progress bar; the task row shows a `done/total` badge that turns green when everything's checked off
+- Overdue rescue — a one-click "Reschedule to today" button on the Today view moves every overdue task forward at once, and overdue tasks now carry a calm red accent bar so they're easy to spot without being alarming
+- Relative due dates — dates are phrased relative to today (*"in 3 days"*, *"3 weeks ago"*, *"Tomorrow"*), falling back to a calendar date for anything more than a month out
+- Completion celebration — finishing a task can play a small confetti burst, and the Today header shows a "done today" count and a day streak; the celebration is optional (Settings → Appearance) and automatically skipped when the system prefers reduced motion
+- Keyboard shortcuts cheat-sheet — press `?` anywhere (or open it from Settings → Keyboard) to see every shortcut
+- Quick-capture discoverability — empty states and a new Settings → Quick capture entry surface the global **Ctrl+Alt+A** hotkey and the `?` cheat-sheet
+- Reduced-motion support — todofy now honors the OS "reduce motion" setting, disabling entrance animations and transitions
+
+### Changed
+- The task detail panel now closes when you click anywhere in the main list area, not only via the ✕ button or `Esc`
+
+### Fixed
+- Drag-and-drop reordering now works reliably inside the app — the previous implementation used the browser's native drag-and-drop, which the Linux (WebKitGTK) webview handles inconsistently, so dropping a task often did nothing; it's been rebuilt on pointer events
+
 ## v1.4.0 — 2026-08-19
 
 ### Added

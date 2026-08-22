@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { useState } from "preact/hooks";
+import { useRef, useState } from "preact/hooks";
 import { useStore } from "../store";
 import type { Task } from "../types";
 import { TaskItem } from "./TaskItem";
@@ -7,11 +7,16 @@ import { TaskItem } from "./TaskItem";
 type Edge = "before" | "after";
 
 /**
- * A list of task rows that can be reordered by dragging. Drag state is local
- * to the section, so drops only ever reorder within it — dropping onto another
- * section is a no-op (that section has no active drag). The dropped task's new
- * `orderIndex` is the midpoint between its neighbors, so reordering never has
- * to renumber the whole list.
+ * A list of task rows that can be reordered by dragging the grip handle.
+ *
+ * We drive this with pointer events rather than the HTML5 drag-and-drop API:
+ * native DnD (`dragstart`/`dragover`/`drop`) is unreliable on WebKitGTK — the
+ * drag visual starts but `drop` frequently never fires — so dropping was a
+ * no-op inside the Tauri window. Pointer events behave consistently there.
+ *
+ * Drag state is local to the section, so reordering only ever happens within
+ * it. The dropped task's new `orderIndex` is the midpoint between its
+ * neighbours, so a reorder never has to renumber the whole list.
  */
 export function TaskSection({
   tasks,
@@ -24,18 +29,36 @@ export function TaskSection({
   const [dragId, setDragId] = useState<number | null>(null);
   const [over, setOver] = useState<{ id: number; edge: Edge } | null>(null);
 
-  const clear = () => {
-    setDragId(null);
-    setOver(null);
+  // Live refs so the document-level pointer listeners always read fresh values
+  // instead of the values captured when the drag started.
+  const rows = useRef(new Map<number, HTMLElement>());
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
+  const dragIdRef = useRef<number | null>(null);
+  const overRef = useRef<{ id: number; edge: Edge } | null>(null);
+  const movedRef = useRef(false);
+
+  const setRow = (id: number) => (el: HTMLElement | null) => {
+    if (el) rows.current.set(id, el);
+    else rows.current.delete(id);
   };
 
   const commit = () => {
-    if (dragId == null || !over || dragId === over.id) return clear();
+    const dId = dragIdRef.current;
+    const ov = overRef.current;
+    const finish = () => {
+      dragIdRef.current = null;
+      overRef.current = null;
+      setDragId(null);
+      setOver(null);
+    };
+    if (dId == null || !ov || dId === ov.id) return finish();
+
     // Position relative to the list with the dragged task removed.
-    const rest = tasks.filter((t) => t.id !== dragId);
-    const targetPos = rest.findIndex((t) => t.id === over.id);
-    if (targetPos === -1) return clear();
-    const insertAt = over.edge === "before" ? targetPos : targetPos + 1;
+    const rest = tasksRef.current.filter((t) => t.id !== dId);
+    const targetPos = rest.findIndex((t) => t.id === ov.id);
+    if (targetPos === -1) return finish();
+    const insertAt = ov.edge === "before" ? targetPos : targetPos + 1;
     const before = rest[insertAt - 1];
     const after = rest[insertAt];
     const newIndex =
@@ -46,9 +69,77 @@ export function TaskSection({
           : after
             ? after.orderIndex - 1
             : 0;
-    reorderTask(dragId, newIndex);
-    clear();
+    reorderTask(dId, newIndex);
+    finish();
   };
+
+  const startDrag =
+    (id: number) => (e: JSX.TargetedPointerEvent<HTMLElement>) => {
+      if (!reorderable || e.button !== 0) return;
+      // Stop the row's onClick (task selection) from firing on release, and
+      // suppress text selection while dragging.
+      e.preventDefault();
+      e.stopPropagation();
+
+      dragIdRef.current = id;
+      overRef.current = null;
+      movedRef.current = false;
+      setDragId(id);
+      setOver(null);
+
+      const onMove = (ev: PointerEvent) => {
+        movedRef.current = true;
+        // Find the insertion point by comparing the pointer against each other
+        // row's midpoint. Falls through to "after the last row" when the
+        // pointer is below every candidate.
+        let target: { id: number; edge: Edge } | null = null;
+        const others = tasksRef.current.filter(
+          (t) => t.id !== dragIdRef.current,
+        );
+        for (const t of others) {
+          const el = rows.current.get(t.id);
+          if (!el) continue;
+          const r = el.getBoundingClientRect();
+          if (ev.clientY < r.top + r.height / 2) {
+            target = { id: t.id, edge: "before" };
+            break;
+          }
+        }
+        if (!target && others.length) {
+          target = { id: others[others.length - 1].id, edge: "after" };
+        }
+        overRef.current = target;
+        setOver(target);
+      };
+
+      const onUp = () => {
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        // If a real drag happened, swallow the click that the browser fires on
+        // release so it doesn't open the task detail panel.
+        if (movedRef.current) {
+          const cancelClick = (ce: MouseEvent) => {
+            ce.stopPropagation();
+            ce.preventDefault();
+          };
+          document.addEventListener("click", cancelClick, {
+            capture: true,
+            once: true,
+          });
+          setTimeout(
+            () =>
+              document.removeEventListener("click", cancelClick, {
+                capture: true,
+              }),
+            120,
+          );
+        }
+        commit();
+      };
+
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+    };
 
   return (
     <div class="flex flex-col gap-0.5">
@@ -67,25 +158,8 @@ export function TaskSection({
                         ? "top"
                         : "bottom"
                       : null,
-                  onDragStart: (e: JSX.TargetedDragEvent<HTMLDivElement>) => {
-                    setDragId(t.id);
-                    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
-                  },
-                  onDragOver: (e: JSX.TargetedDragEvent<HTMLDivElement>) => {
-                    if (dragId == null || dragId === t.id) return;
-                    e.preventDefault();
-                    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-                    const r = e.currentTarget.getBoundingClientRect();
-                    const edge: Edge =
-                      e.clientY < r.top + r.height / 2 ? "before" : "after";
-                    if (over?.id !== t.id || over.edge !== edge)
-                      setOver({ id: t.id, edge });
-                  },
-                  onDrop: (e: JSX.TargetedDragEvent<HTMLDivElement>) => {
-                    e.preventDefault();
-                    commit();
-                  },
-                  onDragEnd: clear,
+                  rowRef: setRow(t.id),
+                  onHandlePointerDown: startDrag(t.id),
                 }
               : undefined
           }

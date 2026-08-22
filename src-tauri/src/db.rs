@@ -45,7 +45,8 @@ pub fn init(conn: &Connection) -> rusqlite::Result<()> {
             order_index  REAL NOT NULL DEFAULT 0,
             notified     INTEGER NOT NULL DEFAULT 0,
             pinned       INTEGER NOT NULL DEFAULT 0,
-            repeat       TEXT                -- daily|weekdays|weekly|monthly|yearly
+            repeat       TEXT,               -- daily|weekdays|weekly|monthly|yearly
+            subtasks     TEXT                -- JSON array of {id,text,done}
         );
 
         CREATE TABLE IF NOT EXISTS task_labels (
@@ -134,6 +135,12 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     // the next occurrence instead of marking it done (see `recur.rs`).
     if !column_exists(conn, "tasks", "repeat") {
         conn.execute("ALTER TABLE tasks ADD COLUMN repeat TEXT", [])?;
+    }
+
+    // Subtasks / checklist: a JSON array of {id,text,done} on each task, for
+    // breaking a task into smaller steps.
+    if !column_exists(conn, "tasks", "subtasks") {
+        conn.execute("ALTER TABLE tasks ADD COLUMN subtasks TEXT", [])?;
     }
 
     Ok(())

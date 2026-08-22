@@ -24,10 +24,12 @@ fn load_task(conn: &Connection, id: i64) -> rusqlite::Result<Task> {
         "SELECT id, title, notes, due_date, remind_at, status, priority,
                 created_at, completed_at, order_index, pinned, repeat,
                 (SELECT COALESCE(SUM(seconds), 0) FROM time_sessions
-                 WHERE task_id = tasks.id AND end_at IS NOT NULL)
+                 WHERE task_id = tasks.id AND end_at IS NOT NULL),
+                subtasks
          FROM tasks WHERE id = ?1",
         [id],
         |r| {
+            let subtasks_json: Option<String> = r.get(13)?;
             Ok(Task {
                 id: r.get(0)?,
                 title: r.get(1)?,
@@ -43,6 +45,10 @@ fn load_task(conn: &Connection, id: i64) -> rusqlite::Result<Task> {
                 repeat: r.get(11)?,
                 tracked_seconds: r.get(12)?,
                 label_ids: Vec::new(),
+                // Tolerate a NULL or malformed column as an empty checklist.
+                subtasks: subtasks_json
+                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .unwrap_or_default(),
             })
         },
     )?;
@@ -162,6 +168,15 @@ pub fn update_task(db: State<Db>, patch: TaskPatch) -> CmdResult<Task> {
         conn.execute(
             "UPDATE tasks SET repeat = ?1 WHERE id = ?2",
             params![repeat, patch.id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    if let Some(subtasks) = &patch.subtasks {
+        // Replace the whole checklist. An empty list is stored as `[]`.
+        let json = serde_json::to_string(subtasks).map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE tasks SET subtasks = ?1 WHERE id = ?2",
+            params![json, patch.id],
         )
         .map_err(|e| e.to_string())?;
     }

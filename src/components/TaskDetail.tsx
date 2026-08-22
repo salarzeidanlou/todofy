@@ -18,7 +18,9 @@ import {
 } from "./Icons";
 import { DatePicker } from "./DatePicker";
 import { RepeatPicker } from "./RepeatPicker";
+import { SubtaskList } from "./SubtaskList";
 import { formatDuration } from "../lib/duration";
+import type { Subtask } from "../types";
 
 const PRIORITIES: { value: 1 | 2 | 3 | 4; label: string; color: string }[] = [
   { value: 1, label: "P1", color: "var(--color-prio-1)" },
@@ -108,6 +110,8 @@ export function TaskDetail() {
         ? { id: task.id, repeat: rule, dueDate: today() }
         : { id: task.id, repeat: rule },
     );
+  const onSubtasks = (subtasks: Subtask[]) =>
+    patchTask({ id: task.id, subtasks });
 
   return (
     <aside class="absolute inset-y-0 right-0 z-40 flex w-[340px] animate-slide-left flex-col border-l border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl shadow-black/20">
@@ -193,6 +197,9 @@ export function TaskDetail() {
             class="w-full resize-none bg-transparent text-sm leading-relaxed text-[var(--color-muted)] outline-none placeholder:text-[var(--color-faint)]"
           />
         </div>
+
+        {/* Checklist / subtasks — chunk a big task into steps */}
+        <SubtaskList task={task} onChange={onSubtasks} />
 
         <hr class="my-4 border-[var(--color-border)]" />
 
