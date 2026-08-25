@@ -25,17 +25,18 @@ Smart lists, labels, recurring tasks, focus timers, and reminders that actually 
 
 ## ✨ Features
 
-- 🗓️ **Smart views** — *Today* (with overdue rollup), *Upcoming* (grouped by date), and *Inbox*
+- 🗓️ **Smart views** — _Today_ (with overdue rollup), _Upcoming_ (grouped by date), and _Inbox_
 - ⚡ **Global quick‑add** — hit **Ctrl+Alt+A** anywhere (even with todofy tucked in the tray) for a floating capture bar; type, press Enter, and you're back to what you were doing
-- ✍️ **Natural‑language quick‑add** — type *"pay rent friday 5pm #home p1"* and the date, time, priority, and label are parsed out live and shown as chips
-- 🔁 **Recurring tasks** — repeat *daily, every weekday, weekly, monthly,* or *yearly*; completing one rolls it forward to the next occurrence instead of finishing it (also from natural language — *"water plants every week"*)
-- 🍅 **Focus timers** — a built‑in **Pomodoro** (focus / short & long breaks) *and* a **per‑task stopwatch**; both keep counting while hidden in the tray and survive a restart, and never auto‑stop — they nudge you instead
+- ✍️ **Natural‑language quick‑add** — type _"pay rent friday 5pm #home p1"_ and the date, time, priority, and label are parsed out live and shown as chips
+- 🔁 **Recurring tasks** — repeat _daily, every weekday, weekly, monthly,_ or _yearly_; completing one rolls it forward to the next occurrence instead of finishing it (also from natural language — _"water plants every week"_)
+- 🍅 **Focus timers** — a built‑in **Pomodoro** (focus / short & long breaks) _and_ a **per‑task stopwatch**; both keep counting while hidden in the tray and survive a restart, and never auto‑stop — they nudge you instead
 - 📊 **Focus screen** — start the Pomodoro, tune phase lengths, and review your focus history (Today / This week / total, grouped by day)
 - ✋ **Drag‑and‑drop reordering** — grab any task and drop it exactly where you want; your manual order sticks
-- 📌 **Pinning** — pin any task to float it to the top of its group, with a dedicated *Pinboard* view
+- 📌 **Pinning** — pin any task to float it to the top of its group, with a dedicated _Pinboard_ view
 - ✅ **Completed view** — every finished task, app-wide, newest first
 - ☑️ **Subtasks / checklists** — break a big task into steps with a live progress bar, so it's easier to start and keep momentum
-- 🧠 **ADHD-friendly touches** — relative due dates (*"in 3 days"*), a completion streak & confetti reward (both optional and motion-safe), and a `?` shortcut cheat-sheet
+- 🔍 **Search & filters** — narrow any view by title/notes as you type, with filter chips for priority and labels; press `/` to jump to search
+- 🧠 **ADHD-friendly touches** — relative due dates (_"in 3 days"_), a completion streak & confetti reward (both optional and motion-safe), and a `?` shortcut cheat-sheet
 - 🏷️ **Labels** — create, rename, recolor (with a full custom color picker), and delete; a searchable Labels page plus per-label filtering
 - 📆 **Beautiful date & time picker** — click the month or year to jump anywhere in seconds
 - ⏰ **Reminders that reach you** — desktop notifications fire **even when hidden in the tray**, as either a system notification or todofy's own popup card pinned to a screen corner, with one‑tap **snooze**
@@ -84,37 +85,41 @@ Smart lists, labels, recurring tasks, focus timers, and reminders that actually 
 Grab a package from the [Releases](../../releases) page, or build it yourself (see below).
 
 **AppImage** — portable, runs on any distro:
+
 ```bash
-chmod +x todofy_1.5.0_amd64.AppImage
-./todofy_1.5.0_amd64.AppImage
+chmod +x todofy_1.6.0_amd64.AppImage
+./todofy_1.6.0_amd64.AppImage
 ```
 
 **Debian / Ubuntu:**
+
 ```bash
-sudo dpkg -i todofy_1.5.0_amd64.deb
+sudo dpkg -i todofy_1.6.0_amd64.deb
 ```
 
 **Fedora / RHEL / openSUSE:**
+
 ```bash
-sudo rpm -i todofy-1.5.0-1.x86_64.rpm
+sudo rpm -i todofy-1.6.0-1.x86_64.rpm
 ```
 
 > Your tasks live at `~/.local/share/com.unifybrowse.todofy/todofy.db`.
 
 ## ⌨️ Keyboard shortcuts
 
-| Key | Action |
-| --- | --- |
-| `Ctrl`+`Alt`+`A` | Open the global quick‑add bar from anywhere (works app‑wide) |
-| `n` | Focus the quick‑add bar |
-| `j` / `↓` | Move to next task |
-| `k` / `↑` | Move to previous task |
-| `e` | Edit the selected task |
-| `c` / `Enter` | Complete / uncomplete the selected task |
-| `p` | Pin / unpin the selected task |
-| `Backspace` / `Delete` | Delete the selected task |
-| `?` | Show the keyboard shortcuts cheat-sheet |
-| `Esc` | Close the detail panel / picker / cheat-sheet |
+| Key                    | Action                                                       |
+| ---------------------- | ------------------------------------------------------------ |
+| `Ctrl`+`Alt`+`A`       | Open the global quick‑add bar from anywhere (works app‑wide) |
+| `n`                    | Focus the quick‑add bar                                      |
+| `/`                    | Focus the search bar                                         |
+| `j` / `↓`              | Move to next task                                            |
+| `k` / `↑`              | Move to previous task                                        |
+| `e`                    | Edit the selected task                                       |
+| `c` / `Enter`          | Complete / uncomplete the selected task                      |
+| `p`                    | Pin / unpin the selected task                                |
+| `Backspace` / `Delete` | Delete the selected task                                     |
+| `?`                    | Show the keyboard shortcuts cheat-sheet                      |
+| `Esc`                  | Close the detail panel / picker / cheat-sheet                |
 
 ## 🛠️ Build from source
 
@@ -154,14 +159,14 @@ bunx tauri icon app-icon.svg
 
 ## 🧱 Tech stack
 
-| Layer | Choice |
-| --- | --- |
-| Shell | [Tauri 2](https://tauri.app) (Rust) |
-| UI | [Preact](https://preactjs.com) + TypeScript |
+| Layer   | Choice                                                                |
+| ------- | --------------------------------------------------------------------- |
+| Shell   | [Tauri 2](https://tauri.app) (Rust)                                   |
+| UI      | [Preact](https://preactjs.com) + TypeScript                           |
 | Styling | [Tailwind CSS 4](https://tailwindcss.com) with a custom design system |
-| State | [Zustand](https://github.com/pmndrs/zustand) |
-| Storage | SQLite via [rusqlite](https://github.com/rusqlite/rusqlite) |
-| Build | [Vite](https://vite.dev) + [Bun](https://bun.sh) |
+| State   | [Zustand](https://github.com/pmndrs/zustand)                          |
+| Storage | SQLite via [rusqlite](https://github.com/rusqlite/rusqlite)           |
+| Build   | [Vite](https://vite.dev) + [Bun](https://bun.sh)                      |
 
 ## 📁 Project structure
 
@@ -191,12 +196,12 @@ todofy/
 ## 🗺️ Roadmap
 
 - [x] Drag‑and‑drop reordering
-- [x] Natural‑language quick‑add (*"pay rent friday 5pm"*)
+- [x] Natural‑language quick‑add (_"pay rent friday 5pm"_)
 - [x] Recurring tasks
 - [x] Focus timers (Pomodoro + per‑task time tracking)
 - [x] Run on startup
 - [x] Subtasks & checklists
-- [ ] Search & filters
+- [x] Search & filters
 
 ## 🤝 Contributing
 
