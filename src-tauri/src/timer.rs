@@ -2,10 +2,12 @@
 //! while the window is hidden in the tray and survive a restart.
 //!
 //! * Per-task stopwatch — `time_sessions` rows; the one with a NULL `end_at`
-//!   is running. Neither timer auto-stops: `poll` only fires reminder
-//!   notifications and lets them keep running.
+//!   is running. `poll` fires reminder notifications but otherwise lets a
+//!   session run; a session left open past `MAX_SESSION_SECS` (e.g. forgotten
+//!   overnight) is auto-stopped and capped rather than left to grow forever.
 //! * Standalone Pomodoro — the single `pomodoro` row; elapsed time in the
-//!   current phase is `accumulated + (now - start_at)` while running.
+//!   current phase is `accumulated + (now - start_at)` while running, capped
+//!   the same way if left running past `MAX_SESSION_SECS`.
 
 use crate::db::Db;
 use crate::models::{ActiveTimer, Pomodoro, SessionLog};
@@ -24,9 +26,36 @@ fn secs_since(iso: &str) -> i64 {
         .unwrap_or(0)
 }
 
+/// Safety cap: nothing tracks (or counts overtime) longer than this without
+/// user interaction. Guards against a forgotten timer running for days after
+/// the app was closed and reopened — that stale `start_at` is read straight
+/// from SQLite, so a bare restart never clears it on its own.
+const MAX_SESSION_SECS: i64 = 12 * 3600;
+
 // ---------------------------------------------------------------- stopwatch
 
+/// Auto-stop any task session that's been running longer than
+/// `MAX_SESSION_SECS`, capping its recorded duration at that limit.
+fn close_stale_sessions(conn: &Connection) -> rusqlite::Result<()> {
+    let now = now_iso();
+    let mut stmt =
+        conn.prepare("SELECT id, start_at FROM time_sessions WHERE end_at IS NULL")?;
+    let rows: Vec<(i64, String)> = stmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    for (id, start) in rows {
+        if secs_since(&start) > MAX_SESSION_SECS {
+            conn.execute(
+                "UPDATE time_sessions SET end_at = ?1, seconds = ?2 WHERE id = ?3",
+                params![now, MAX_SESSION_SECS, id],
+            )?;
+        }
+    }
+    Ok(())
+}
+
 fn read_active(conn: &Connection) -> rusqlite::Result<Option<ActiveTimer>> {
+    close_stale_sessions(conn)?;
     conn.query_row(
         "SELECT s.task_id, t.title, s.start_at
          FROM time_sessions s JOIN tasks t ON t.id = s.task_id
@@ -125,7 +154,31 @@ fn phase_target(phase: &str, focus: i64, short: i64, long: i64) -> i64 {
     minutes * 60
 }
 
+/// Auto-pause a Pomodoro segment that's been running (including overtime)
+/// longer than `MAX_SESSION_SECS`, folding the capped duration into
+/// `accumulated` just like a normal pause.
+fn close_stale_pomodoro(conn: &Connection) -> rusqlite::Result<()> {
+    let row: Option<(i64, String)> = conn
+        .query_row(
+            "SELECT accumulated, start_at FROM pomodoro WHERE id = 1 AND running = 1 AND start_at IS NOT NULL",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    if let Some((accumulated, start_at)) = row {
+        let elapsed = accumulated + secs_since(&start_at);
+        if elapsed > MAX_SESSION_SECS {
+            conn.execute(
+                "UPDATE pomodoro SET running = 0, start_at = NULL, accumulated = ?1 WHERE id = 1",
+                params![MAX_SESSION_SECS],
+            )?;
+        }
+    }
+    Ok(())
+}
+
 fn read_pomodoro(conn: &Connection) -> rusqlite::Result<Pomodoro> {
+    close_stale_pomodoro(conn)?;
     conn.query_row(
         "SELECT phase, running, start_at, accumulated, completed_focus,
                 focus_min, short_min, long_min, long_every
@@ -249,6 +302,10 @@ pub fn poll(app: &AppHandle, notifications_enabled: bool) {
     let db = app.state::<Db>();
     let conn = db.conn();
     let mut pomodoro_changed = false;
+
+    // Enforce the runaway-timer safety cap even if nobody's looking at the UI.
+    let _ = close_stale_sessions(&conn);
+    let _ = close_stale_pomodoro(&conn);
 
     // Pomodoro phase reached its target — nudge once, keep running (overtime).
     if let Ok(p) = read_pomodoro(&conn) {

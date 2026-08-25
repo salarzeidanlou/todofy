@@ -32,6 +32,9 @@ interface State {
   theme: Theme;
   confirm: ConfirmOptions | null;
   sidebarCollapsed: boolean;
+  searchQuery: string;
+  filterLabelIds: number[];
+  filterPriorities: number[];
 
   activeTimer: ActiveTimer | null;
   pomodoro: Pomodoro | null;
@@ -46,6 +49,10 @@ interface State {
   load: () => Promise<void>;
   setView: (view: ViewId) => void;
   select: (id: number | null) => void;
+  setSearchQuery: (q: string) => void;
+  toggleFilterLabel: (id: number) => void;
+  toggleFilterPriority: (p: number) => void;
+  clearFilters: () => void;
   toggleTheme: () => void;
   toggleSidebar: () => void;
   toggleShortcuts: (open?: boolean) => void;
@@ -95,6 +102,9 @@ export const useStore = create<State>((set, get) => ({
   theme: initialTheme(),
   confirm: null,
   sidebarCollapsed: localStorage.getItem("todofy-sidebar") === "collapsed",
+  searchQuery: "",
+  filterLabelIds: [],
+  filterPriorities: [],
 
   activeTimer: null,
   pomodoro: null,
@@ -115,6 +125,21 @@ export const useStore = create<State>((set, get) => ({
 
   setView: (view) => set({ view, selectedId: null }),
   select: (id) => set({ selectedId: id }),
+  setSearchQuery: (searchQuery) => set({ searchQuery }),
+  toggleFilterLabel: (id) =>
+    set({
+      filterLabelIds: get().filterLabelIds.includes(id)
+        ? get().filterLabelIds.filter((labelId) => labelId !== id)
+        : [...get().filterLabelIds, id],
+    }),
+  toggleFilterPriority: (priority) =>
+    set({
+      filterPriorities: get().filterPriorities.includes(priority)
+        ? get().filterPriorities.filter((p) => p !== priority)
+        : [...get().filterPriorities, priority],
+    }),
+  clearFilters: () =>
+    set({ searchQuery: "", filterLabelIds: [], filterPriorities: [] }),
 
   toggleTheme: () => {
     const theme: Theme = get().theme === "dark" ? "light" : "dark";
@@ -332,6 +357,29 @@ function sortTasks(tasks: Task[]): Task[] {
   );
 }
 
+export function applySearchAndFilters(
+  tasks: Task[],
+  searchQuery: string,
+  filterLabelIds: number[],
+  filterPriorities: number[],
+): Task[] {
+  const query = searchQuery.trim().toLowerCase();
+  if (!query && filterLabelIds.length === 0 && filterPriorities.length === 0) {
+    return tasks;
+  }
+
+  return tasks.filter(
+    (task) =>
+      (!query ||
+        task.title.toLowerCase().includes(query) ||
+        (task.notes ?? "").toLowerCase().includes(query)) &&
+      (filterLabelIds.length === 0 ||
+        task.labelIds.some((id) => filterLabelIds.includes(id))) &&
+      (filterPriorities.length === 0 ||
+        filterPriorities.includes(task.priority)),
+  );
+}
+
 /** Filter tasks for the active view. */
 export function tasksForView(tasks: Task[], view: ViewId): Task[] {
   const t = today();
@@ -378,7 +426,13 @@ export function navCount(tasks: Task[], view: ViewId): number {
 
 /** Task ids in on-screen order for the active view — drives keyboard nav. */
 export function visibleTaskIds(tasks: Task[], view: ViewId): number[] {
-  const inView = tasksForView(tasks, view);
+  const { searchQuery, filterLabelIds, filterPriorities } = useStore.getState();
+  const inView = applySearchAndFilters(
+    tasksForView(tasks, view),
+    searchQuery,
+    filterLabelIds,
+    filterPriorities,
+  );
   const relevant =
     view.kind === "completed" || view.kind === "pinned"
       ? inView

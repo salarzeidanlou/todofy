@@ -69,6 +69,10 @@ export function useKeyboard() {
       };
 
       switch (e.key) {
+        case "/":
+          e.preventDefault();
+          focusById("search-input");
+          break;
         case "n":
           e.preventDefault();
           focusById("quick-add-input");

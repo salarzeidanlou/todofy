@@ -1,4 +1,4 @@
-import { tasksForView, useStore } from "../store";
+import { applySearchAndFilters, tasksForView, useStore } from "../store";
 import { sectionsForView } from "../lib/grouping";
 import { completionStats } from "../lib/streak";
 import type { Task, ViewId } from "../types";
@@ -8,6 +8,7 @@ import { TaskSection } from "./TaskSection";
 import { LabelsView } from "./LabelsView";
 import { SettingsView } from "./SettingsView";
 import { FocusView } from "./FocusView";
+import { SearchBar } from "./SearchBar";
 
 function viewTitle(view: ViewId, labelName?: string): string {
   switch (view.kind) {
@@ -56,7 +57,17 @@ function viewSubtitle(view: ViewId): string {
 }
 
 export function TaskList() {
-  const { tasks, labels, view, loading, rescheduleOverdue } = useStore();
+  const {
+    tasks,
+    labels,
+    view,
+    loading,
+    searchQuery,
+    filterLabelIds,
+    filterPriorities,
+    clearFilters,
+    rescheduleOverdue,
+  } = useStore();
   if (view.kind === "labels") return <LabelsView />;
   if (view.kind === "settings") return <SettingsView />;
   if (view.kind === "focus") return <FocusView />;
@@ -73,9 +84,18 @@ export function TaskList() {
     (view.kind === "today" || view.kind === "completed") &&
     (stats.doneToday > 0 || stats.streak > 0);
 
-  const inView = tasksForView(tasks, view);
+  const inView = applySearchAndFilters(
+    tasksForView(tasks, view),
+    searchQuery,
+    filterLabelIds,
+    filterPriorities,
+  );
   const active = inView.filter((t) => t.status === "active");
   const done = inView.filter((t) => t.status === "done");
+  const hasFilters =
+    searchQuery.trim() !== "" ||
+    filterLabelIds.length > 0 ||
+    filterPriorities.length > 0;
   const sections = sectionsForView(isCompletedView ? inView : active, view).filter(
     (s) => s.tasks.length > 0,
   );
@@ -111,6 +131,9 @@ export function TaskList() {
         <p class="mt-0.5 text-sm text-[var(--color-muted)]">
           {viewSubtitle(view)}
         </p>
+        <div class="mx-auto w-full max-w-2xl">
+          <SearchBar />
+        </div>
       </header>
 
       {showQuickAdd && (
@@ -123,7 +146,11 @@ export function TaskList() {
         {loading ? (
           <Skeleton />
         ) : active.length === 0 && done.length === 0 ? (
-          <Empty view={view} />
+          hasFilters ? (
+            <FilteredEmpty clearFilters={clearFilters} />
+          ) : (
+            <Empty view={view} />
+          )
         ) : (
           <>
             {sections.map((section) => (
@@ -176,6 +203,23 @@ export function TaskList() {
         )}
       </div>
     </main>
+  );
+}
+
+function FilteredEmpty({ clearFilters }: { clearFilters: () => void }) {
+  return (
+    <div class="mt-16 flex flex-col items-center gap-3 text-center">
+      <p class="text-sm text-[var(--color-muted)]">
+        No tasks match your search or filters.
+      </p>
+      <button
+        type="button"
+        onClick={clearFilters}
+        class="rounded-md px-2.5 py-1.5 text-xs font-medium text-[var(--color-accent)] transition-colors hover:bg-[var(--color-accent-soft)]"
+      >
+        Clear filters
+      </button>
+    </div>
   );
 }
 

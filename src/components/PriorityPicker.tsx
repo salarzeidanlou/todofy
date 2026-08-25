@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { FlagIcon } from "./Icons";
 
-const PRIORITIES: { value: 1 | 2 | 3 | 4; label: string; color: string }[] = [
+export const PRIORITIES: { value: 1 | 2 | 3 | 4; label: string; color: string }[] = [
   { value: 1, label: "Priority 1", color: "var(--color-prio-1)" },
   { value: 2, label: "Priority 2", color: "var(--color-prio-2)" },
   { value: 3, label: "Priority 3", color: "var(--color-prio-3)" },
