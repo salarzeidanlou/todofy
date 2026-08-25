@@ -4,6 +4,12 @@ name: Release
 # from package.json; a release is cut only when no release exists for it yet,
 # so ordinary pushes (or re-runs) never republish. Release notes are pulled
 # from the matching section of CHANGELOG.md.
+#
+# Builds run on Linux, macOS (universal: Intel + Apple Silicon in one .dmg),
+# and Windows, each uploading its bundle to the same draft release. The
+# release is only flipped to published once every platform has succeeded —
+# if one leg fails, the others' assets still land on the draft so it can be
+# inspected and published by hand.
 on:
   push:
     branches: [main]
@@ -47,11 +53,22 @@ jobs:
   release:
     needs: check
     if: needs.check.outputs.release == 'true'
-    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            args: ''
+          - platform: macos-latest
+            args: '--target universal-apple-darwin'
+          - platform: windows-latest
+            args: ''
+    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Extract release notes from CHANGELOG
+        shell: bash
         run: |
           VERSION="${{ needs.check.outputs.version }}"
           NOTES=$(awk -v v="## v$VERSION" '
@@ -60,18 +77,19 @@ jobs:
             grab { print }
           ' CHANGELOG.md)
           if [ -z "$(printf '%s' "$NOTES" | tr -d '[:space:]')" ]; then
-            NOTES="Download a bundle below (.deb, .rpm, or .AppImage)."
+            NOTES="Download a bundle below for your platform."
           fi
           {
             echo 'RELEASE_NOTES<<CHANGELOG_EOF'
             printf '%s\n' "$NOTES"
             echo ''
             echo '---'
-            echo 'Download a bundle below (.deb, .rpm, or .AppImage).'
+            echo 'Download a bundle below for your platform (.deb/.rpm/.AppImage for Linux, .dmg for macOS, .msi/.exe for Windows).'
             echo 'CHANGELOG_EOF'
           } >> "$GITHUB_ENV"
 
-      - name: Install system dependencies
+      - name: Install system dependencies (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -81,6 +99,10 @@ jobs:
       - uses: oven-sh/setup-bun@v2
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          # Universal macOS builds need both Apple Silicon and Intel targets;
+          # Linux/Windows just use the runner's default host target.
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - uses: swatinem/rust-cache@v2
         with:
@@ -89,7 +111,7 @@ jobs:
       - name: Install frontend dependencies
         run: bun install
 
-      - name: Build and publish release
+      - name: Build and upload bundle
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -97,5 +119,16 @@ jobs:
           tagName: v${{ needs.check.outputs.version }}
           releaseName: 'todofy v${{ needs.check.outputs.version }}'
           releaseBody: ${{ env.RELEASE_NOTES }}
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
+          args: ${{ matrix.args }}
+
+  publish:
+    needs: [check, release]
+    if: needs.check.outputs.release == 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "v${{ needs.check.outputs.version }}" --draft=false --repo "${{ github.repository }}"
