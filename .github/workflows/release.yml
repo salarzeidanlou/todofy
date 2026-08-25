@@ -33,7 +33,7 @@ jobs:
       version: ${{ steps.detect.outputs.version }}
       release: ${{ steps.detect.outputs.release }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Detect version and whether it needs releasing
         id: detect
@@ -65,7 +65,7 @@ jobs:
             args: ''
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Extract release notes from CHANGELOG
         shell: bash
