@@ -8,7 +8,7 @@
 
 Smart lists, labels, recurring tasks, focus timers, and reminders that actually notify you — even when it's tucked away in your tray.
 
-![Platform](https://img.shields.io/badge/platform-Linux-1a2029?style=flat-square&logo=linux&logoColor=white)
+![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-1a2029?style=flat-square&logo=linux&logoColor=white)
 ![Tauri](https://img.shields.io/badge/Tauri-2.x-24C8DB?style=flat-square&logo=tauri&logoColor=white)
 ![Preact](https://img.shields.io/badge/Preact-10-673AB8?style=flat-square&logo=preact&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)
@@ -88,23 +88,41 @@ Grab a package from the [Releases](../../releases) page, or build it yourself (s
 **AppImage** — portable, runs on any distro:
 
 ```bash
-chmod +x todofy_1.6.0_amd64.AppImage
-./todofy_1.6.0_amd64.AppImage
+chmod +x todofy_1.7.1_amd64.AppImage
+./todofy_1.7.1_amd64.AppImage
 ```
 
 **Debian / Ubuntu:**
 
 ```bash
-sudo dpkg -i todofy_1.6.0_amd64.deb
+sudo dpkg -i todofy_1.7.1_amd64.deb
 ```
 
 **Fedora / RHEL / openSUSE:**
 
 ```bash
-sudo rpm -i todofy-1.6.0-1.x86_64.rpm
+sudo rpm -i todofy-1.7.1-1.x86_64.rpm
 ```
 
-> Your tasks live at `~/.local/share/com.unifybrowse.todofy/todofy.db`.
+**macOS** — open the `.dmg` and drag todofy into Applications. It's not
+notarized yet, so on first launch right‑click the app and choose **Open** to
+get past Gatekeeper:
+
+```
+todofy_1.7.1_x64.dmg      # Intel
+todofy_1.7.1_aarch64.dmg  # Apple Silicon
+```
+
+**Windows** — run the installer:
+
+```
+todofy_1.7.1_x64-setup.exe   # NSIS installer
+todofy_1.7.1_x64_en-US.msi   # or the MSI
+```
+
+> Your tasks live in the app's data directory — `~/.local/share/com.unifybrowse.todofy/`
+> on Linux, `~/Library/Application Support/com.unifybrowse.todofy/` on macOS, and
+> `%APPDATA%\com.unifybrowse.todofy\` on Windows.
 
 ## ⌨️ Keyboard shortcuts
 
