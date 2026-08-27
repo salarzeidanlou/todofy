@@ -1,6 +1,6 @@
 [package]
 name = "todofy"
-version = "1.7.1"
+version = "1.7.2"
 description = "A modern to-do app for Linux"
 authors = ["Salar Zeidanlou"]
 edition = "2021"

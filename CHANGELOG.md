@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.7.2 — 2026-08-27
+
+### Fixed
+
+- Account sign-in and sync work in packaged release builds again. Supabase configuration is now read at build time, and a build without it cleanly disables account sync (the Account section shows it as unavailable) rather than reaching out to a server
+
+### Security
+
+- Rotated the Supabase publishable key that shipped in earlier builds
+
 ## v1.7.1 — 2026-08-27
 
 ### Fixed

@@ -88,20 +88,20 @@ Grab a package from the [Releases](../../releases) page, or build it yourself (s
 **AppImage** — portable, runs on any distro:
 
 ```bash
-chmod +x todofy_1.7.1_amd64.AppImage
-./todofy_1.7.1_amd64.AppImage
+chmod +x todofy_1.7.2_amd64.AppImage
+./todofy_1.7.2_amd64.AppImage
 ```
 
 **Debian / Ubuntu:**
 
 ```bash
-sudo dpkg -i todofy_1.7.1_amd64.deb
+sudo dpkg -i todofy_1.7.2_amd64.deb
 ```
 
 **Fedora / RHEL / openSUSE:**
 
 ```bash
-sudo rpm -i todofy-1.7.1-1.x86_64.rpm
+sudo rpm -i todofy-1.7.2-1.x86_64.rpm
 ```
 
 **macOS** — open the `.dmg` and drag todofy into Applications. It's not
@@ -109,15 +109,15 @@ notarized yet, so on first launch right‑click the app and choose **Open** to
 get past Gatekeeper:
 
 ```
-todofy_1.7.1_x64.dmg      # Intel
-todofy_1.7.1_aarch64.dmg  # Apple Silicon
+todofy_1.7.2_x64.dmg      # Intel
+todofy_1.7.2_aarch64.dmg  # Apple Silicon
 ```
 
 **Windows** — run the installer:
 
 ```
-todofy_1.7.1_x64-setup.exe   # NSIS installer
-todofy_1.7.1_x64_en-US.msi   # or the MSI
+todofy_1.7.2_x64-setup.exe   # NSIS installer
+todofy_1.7.2_x64_en-US.msi   # or the MSI
 ```
 
 > Your tasks live in the app's data directory — `~/.local/share/com.unifybrowse.todofy/`
