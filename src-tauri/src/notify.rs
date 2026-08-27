@@ -16,7 +16,7 @@ use tauri_plugin_notification::NotificationExt;
 /// Show a desktop notification with `title` and `body`, routed per the user's
 /// chosen style. `task_id` lets the custom popup open the right task on click.
 /// Best-effort.
-pub fn send(app: &AppHandle, title: &str, body: &str, task_id: Option<i64>) {
+pub fn send(app: &AppHandle, title: &str, body: &str, task_id: Option<String>) {
     let _ = deliver(app, title, body, task_id);
 }
 
@@ -27,7 +27,7 @@ pub fn deliver(
     app: &AppHandle,
     title: &str,
     body: &str,
-    task_id: Option<i64>,
+    task_id: Option<String>,
 ) -> Result<&'static str, String> {
     let style = {
         let db = app.state::<Db>();

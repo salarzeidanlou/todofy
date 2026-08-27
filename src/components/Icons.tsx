@@ -21,6 +21,13 @@ export const InboxIcon = (p: P) => (
   </svg>
 );
 
+export const UserIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </svg>
+);
+
 export const TodayIcon = (p: P) => (
   <svg {...base(p)}>
     <rect x="3" y="4" width="18" height="18" rx="2" />

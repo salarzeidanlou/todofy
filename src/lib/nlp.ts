@@ -9,7 +9,7 @@ export interface ParsedQuickAdd {
   time: string | null; // HH:mm, only when a clock time was stated
   priority: number | null; // 1..4
   repeat: RepeatRule | null;
-  labelIds: number[];
+  labelIds: string[];
   labelNames: string[];
 }
 
@@ -50,7 +50,7 @@ export function parseQuickAdd(input: string, labels: Label[]): ParsedQuickAdd {
   let text = input;
   let priority: number | null = null;
   let repeat: RepeatRule | null = null;
-  const labelIds: number[] = [];
+  const labelIds: string[] = [];
   const labelNames: string[] = [];
 
   // Priority first, so chrono never sees `p1` etc.

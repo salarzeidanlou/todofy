@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.7.0 — 2026-08-27
+
+### Added
+
+- Account sync — sign in with an email and password (Settings → Account) to sync your tasks, labels, focus sessions, and their history across devices, backed by Supabase. It's fully optional and additive: todofy still works exactly as before with no account, entirely offline and local-first. Sign-in and sign-up happen in a polished in-app modal, with a live sync-status indicator (last synced, syncing, offline, or failed) and a manual **Sync now** button
+- Sessions are stored in your operating system's secret store (libsecret / Keychain / Credential Manager) rather than in the app's web storage, falling back gracefully where no keychain is available
+
+### Changed
+
+- Redesigned the notification popup — a cleaner card with a ringed icon and a slim auto-dismiss progress bar that pauses while you hover
+- A custom right-click menu replaces the webview's browser one (Back / Forward / Reload / Inspect Element) — a clean todofy menu with context-aware **Cut / Copy / Paste / Select all** on text fields (with shortcut hints) plus quick **New task**, **Settings**, and theme toggle actions
+
+### Fixed
+
+- The notification popup can no longer get "stuck" as an invisible, click-blocking window in a screen corner. If its content ever failed to draw (for example, the popup window loaded a beat after the reminder fired), the transparent always-on-top frame could linger and swallow clicks; it now reliably shows its content and always hides itself, with a backend safety timeout as a backstop
+
 ## v1.6.0 — 2026-08-25
 
 ### Added

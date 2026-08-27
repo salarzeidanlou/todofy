@@ -1,5 +1,5 @@
 export interface Label {
-  id: number;
+  id: string; // UUID
   name: string;
   color: string;
 }
@@ -15,7 +15,7 @@ export interface Subtask {
 }
 
 export interface Task {
-  id: number;
+  id: string; // UUID
   title: string;
   notes: string | null;
   dueDate: string | null; // YYYY-MM-DD
@@ -28,21 +28,21 @@ export interface Task {
   pinned: boolean;
   repeat: RepeatRule | null;
   trackedSeconds: number;
-  labelIds: number[];
+  labelIds: string[];
   subtasks: Subtask[];
 }
 
 /** The currently running per-task stopwatch. */
 export interface ActiveTimer {
-  taskId: number;
+  taskId: string;
   title: string;
   startAt: string; // ISO
 }
 
 /** A completed focus session, for the history view. */
 export interface SessionLog {
-  id: number;
-  taskId: number;
+  id: string;
+  taskId: string;
   title: string;
   startAt: string;
   endAt: string;
@@ -71,18 +71,18 @@ export interface NewTask {
   dueDate?: string | null;
   remindAt?: string | null;
   priority?: number;
-  labelIds?: number[];
+  labelIds?: string[];
   repeat?: RepeatRule | null;
 }
 
 export interface TaskPatch {
-  id: number;
+  id: string;
   title?: string;
   notes?: string | null;
   dueDate?: string | null;
   remindAt?: string | null;
   priority?: number;
-  labelIds?: number[];
+  labelIds?: string[];
   pinned?: boolean;
   repeat?: RepeatRule | null;
   subtasks?: Subtask[];
@@ -90,7 +90,7 @@ export interface TaskPatch {
 
 /** A reminder that has fired, shown as an in-app toast. */
 export interface ActiveReminder {
-  id: number;
+  id: string;
   title: string;
 }
 
@@ -104,4 +104,4 @@ export type ViewId =
   | { kind: "labels" }
   | { kind: "settings" }
   | { kind: "focus" }
-  | { kind: "label"; labelId: number };
+  | { kind: "label"; labelId: string };

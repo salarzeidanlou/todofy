@@ -9,7 +9,7 @@ export function LabelsView() {
     useStore();
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const filtered = labels.filter((l) =>
     l.name.toLowerCase().includes(query.trim().toLowerCase()),

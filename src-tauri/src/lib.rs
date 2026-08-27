@@ -4,9 +4,11 @@ mod models;
 mod notify;
 mod popup;
 mod quickwin;
+mod secret;
 mod recur;
 mod scheduler;
 mod settings;
+mod sync;
 mod timer;
 mod tray;
 
@@ -120,6 +122,7 @@ pub fn run() {
             notify::send_test_notification,
             popup::notify_popup_dismiss,
             popup::notify_popup_open,
+            popup::notify_popup_pending,
             settings::get_setting,
             settings::set_setting,
             settings::get_autostart,
@@ -134,6 +137,15 @@ pub fn run() {
             timer::pomodoro_reset,
             timer::pomodoro_next,
             timer::set_pomodoro_config,
+            sync::sync_changes_since,
+            sync::sync_apply,
+            sync::sync_get_watermark,
+            sync::sync_set_watermark,
+            sync::sync_reset,
+            sync::sync_purge_tombstones,
+            secret::secret_get,
+            secret::secret_set,
+            secret::secret_delete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -9,7 +9,7 @@
 //!   current phase is `accumulated + (now - start_at)` while running, capped
 //!   the same way if left running past `MAX_SESSION_SECS`.
 
-use crate::db::Db;
+use crate::db::{new_uuid, Db};
 use crate::models::{ActiveTimer, Pomodoro, SessionLog};
 use chrono::{DateTime, Local};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -40,13 +40,13 @@ fn close_stale_sessions(conn: &Connection) -> rusqlite::Result<()> {
     let now = now_iso();
     let mut stmt =
         conn.prepare("SELECT id, start_at FROM time_sessions WHERE end_at IS NULL")?;
-    let rows: Vec<(i64, String)> = stmt
+    let rows: Vec<(String, String)> = stmt
         .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
         .collect::<rusqlite::Result<_>>()?;
     for (id, start) in rows {
         if secs_since(&start) > MAX_SESSION_SECS {
             conn.execute(
-                "UPDATE time_sessions SET end_at = ?1, seconds = ?2 WHERE id = ?3",
+                "UPDATE time_sessions SET end_at = ?1, seconds = ?2, updated_at = ?1 WHERE id = ?3",
                 params![now, MAX_SESSION_SECS, id],
             )?;
         }
@@ -59,8 +59,8 @@ fn read_active(conn: &Connection) -> rusqlite::Result<Option<ActiveTimer>> {
     conn.query_row(
         "SELECT s.task_id, t.title, s.start_at
          FROM time_sessions s JOIN tasks t ON t.id = s.task_id
-         WHERE s.end_at IS NULL
-         ORDER BY s.id DESC LIMIT 1",
+         WHERE s.end_at IS NULL AND s.deleted_at IS NULL AND t.deleted_at IS NULL
+         ORDER BY s.start_at DESC LIMIT 1",
         [],
         |r| {
             Ok(ActiveTimer {
@@ -77,12 +77,12 @@ fn read_active(conn: &Connection) -> rusqlite::Result<Option<ActiveTimer>> {
 fn close_open_sessions(conn: &Connection) -> rusqlite::Result<()> {
     let now = now_iso();
     let mut stmt = conn.prepare("SELECT id, start_at FROM time_sessions WHERE end_at IS NULL")?;
-    let rows: Vec<(i64, String)> = stmt
+    let rows: Vec<(String, String)> = stmt
         .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
         .collect::<rusqlite::Result<_>>()?;
     for (id, start) in rows {
         conn.execute(
-            "UPDATE time_sessions SET end_at = ?1, seconds = ?2 WHERE id = ?3",
+            "UPDATE time_sessions SET end_at = ?1, seconds = ?2, updated_at = ?1 WHERE id = ?3",
             params![now, secs_since(&start), id],
         )?;
     }
@@ -92,12 +92,12 @@ fn close_open_sessions(conn: &Connection) -> rusqlite::Result<()> {
 /// Start tracking a task. Any other running session is stopped first, so at
 /// most one stopwatch runs at a time.
 #[tauri::command]
-pub fn start_timer(db: State<Db>, id: i64) -> Result<Option<ActiveTimer>, String> {
+pub fn start_timer(db: State<Db>, id: String) -> Result<Option<ActiveTimer>, String> {
     let conn = db.conn();
     close_open_sessions(&conn).map_err(|e| e.to_string())?;
     conn.execute(
-        "INSERT INTO time_sessions (task_id, start_at) VALUES (?1, ?2)",
-        params![id, now_iso()],
+        "INSERT INTO time_sessions (id, task_id, start_at, updated_at) VALUES (?1, ?2, ?3, ?3)",
+        params![new_uuid(), id, now_iso()],
     )
     .map_err(|e| e.to_string())?;
     read_active(&conn).map_err(|e| e.to_string())
@@ -122,7 +122,7 @@ pub fn focus_history(db: State<Db>, limit: i64) -> Result<Vec<SessionLog>, Strin
         .prepare(
             "SELECT s.id, s.task_id, t.title, s.start_at, s.end_at, s.seconds
              FROM time_sessions s JOIN tasks t ON t.id = s.task_id
-             WHERE s.end_at IS NOT NULL
+             WHERE s.end_at IS NOT NULL AND s.deleted_at IS NULL AND t.deleted_at IS NULL
              ORDER BY s.start_at DESC LIMIT ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -300,67 +300,80 @@ pub fn set_pomodoro_config(
 /// stopping either timer.
 pub fn poll(app: &AppHandle, notifications_enabled: bool) {
     let db = app.state::<Db>();
-    let conn = db.conn();
     let mut pomodoro_changed = false;
 
-    // Enforce the runaway-timer safety cap even if nobody's looking at the UI.
-    let _ = close_stale_sessions(&conn);
-    let _ = close_stale_pomodoro(&conn);
+    // Pending reminders, gathered while the DB lock is held and delivered
+    // only after it's released — `notify::send` can make a blocking D-Bus
+    // call, and holding the mutex across that would freeze every other
+    // command (they all need `db.conn()`) if the portal is slow to reply.
+    let mut pomodoro_notice: Option<(&'static str, &'static str)> = None;
+    let mut stopwatch_notices: Vec<(i64, String, String)> = Vec::new();
 
-    // Pomodoro phase reached its target — nudge once, keep running (overtime).
-    if let Ok(p) = read_pomodoro(&conn) {
-        if p.running {
-            let elapsed = p.accumulated + p.start_at.as_deref().map(secs_since).unwrap_or(0);
-            let notified: i64 = conn
-                .query_row("SELECT notified FROM pomodoro WHERE id = 1", [], |r| {
-                    r.get(0)
-                })
-                .unwrap_or(0);
-            if elapsed >= p.target && notified == 0 {
-                let (title, body) = if p.phase == "focus" {
-                    ("Focus session done", "Time for a break · todofy")
-                } else {
-                    ("Break's over", "Back to focus · todofy")
-                };
-                if notifications_enabled {
-                    crate::notify::send(app, title, body, None);
+    {
+        let conn = db.conn();
+
+        // Enforce the runaway-timer safety cap even if nobody's looking at the UI.
+        let _ = close_stale_sessions(&conn);
+        let _ = close_stale_pomodoro(&conn);
+
+        // Pomodoro phase reached its target — nudge once, keep running (overtime).
+        if let Ok(p) = read_pomodoro(&conn) {
+            if p.running {
+                let elapsed = p.accumulated + p.start_at.as_deref().map(secs_since).unwrap_or(0);
+                let notified: i64 = conn
+                    .query_row("SELECT notified FROM pomodoro WHERE id = 1", [], |r| {
+                        r.get(0)
+                    })
+                    .unwrap_or(0);
+                if elapsed >= p.target && notified == 0 {
+                    pomodoro_notice = Some(if p.phase == "focus" {
+                        ("Focus session done", "Time for a break · todofy")
+                    } else {
+                        ("Break's over", "Back to focus · todofy")
+                    });
+                    let _ = conn.execute("UPDATE pomodoro SET notified = 1 WHERE id = 1", []);
+                    pomodoro_changed = true;
                 }
-                let _ = conn.execute("UPDATE pomodoro SET notified = 1 WHERE id = 1", []);
-                pomodoro_changed = true;
             }
         }
-    }
 
-    // Long-running stopwatch: nudge once per elapsed hour, keep it running.
-    if let Ok(mut stmt) = conn.prepare(
-        "SELECT s.id, t.title, s.start_at, s.notified
-         FROM time_sessions s JOIN tasks t ON t.id = s.task_id
-         WHERE s.end_at IS NULL",
-    ) {
-        let rows: Vec<(i64, String, String, i64)> = stmt
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
-            .and_then(|it| it.collect())
-            .unwrap_or_default();
-        for (id, title, start, notified) in rows {
-            let hours = secs_since(&start) / 3600;
-            if hours > notified {
-                if notifications_enabled {
-                    crate::notify::send(
-                        app,
-                        "Still tracking time",
-                        &format!("“{title}” — {hours}h and counting · todofy"),
-                        None,
+        // Long-running stopwatch: nudge once per elapsed hour, keep it running.
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT s.id, t.title, s.start_at, s.notified
+             FROM time_sessions s JOIN tasks t ON t.id = s.task_id
+             WHERE s.end_at IS NULL AND s.deleted_at IS NULL AND t.deleted_at IS NULL",
+        ) {
+            let rows: Vec<(String, String, String, i64)> = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+                .and_then(|it| it.collect())
+                .unwrap_or_default();
+            for (id, title, start, notified) in rows {
+                let hours = secs_since(&start) / 3600;
+                if hours > notified {
+                    let _ = conn.execute(
+                        "UPDATE time_sessions SET notified = ?1 WHERE id = ?2",
+                        params![hours, id],
                     );
+                    stopwatch_notices.push((hours, title, id));
                 }
-                let _ = conn.execute(
-                    "UPDATE time_sessions SET notified = ?1 WHERE id = ?2",
-                    params![hours, id],
-                );
             }
+        };
+    } // conn dropped here — lock released before any notification is sent
+
+    if notifications_enabled {
+        if let Some((title, body)) = pomodoro_notice {
+            crate::notify::send(app, title, body, None);
+        }
+        for (hours, title, _id) in &stopwatch_notices {
+            crate::notify::send(
+                app,
+                "Still tracking time",
+                &format!("“{title}” — {hours}h and counting · todofy"),
+                None,
+            );
         }
     }
 
-    drop(conn);
     if pomodoro_changed {
         let _ = app.emit("pomodoro-updated", ());
     }

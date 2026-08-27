@@ -1,6 +1,6 @@
 [package]
 name = "todofy"
-version = "1.6.0"
+version = "1.7.0"
 description = "A modern to-do app for Linux"
 authors = ["Salar Zeidanlou"]
 edition = "2021"
@@ -32,4 +32,16 @@ chrono = { version = "0.4", features = ["serde"] }
 # org.freedesktop.Notifications path on some Linux sessions. Version matches
 # what Tauri already pulls in transitively.
 zbus = "5"
+# UUID primary keys for syncable rows (tasks, labels, sessions). Generated
+# on-device so records can be created offline and still merge cleanly into a
+# shared cloud database without id collisions between devices.
+uuid = { version = "1", features = ["v4"] }
+# OS-native secret store for the account session (libsecret / Keychain /
+# Credential Manager), so tokens don't sit in the webview's localStorage.
+keyring = { version = "3", features = [
+    "apple-native",
+    "windows-native",
+    "sync-secret-service",
+    "crypto-rust",
+] }
 

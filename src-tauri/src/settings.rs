@@ -14,7 +14,7 @@ pub fn read(conn: &Connection, key: &str) -> Option<String> {
 }
 
 /// Upsert a setting value.
-fn write(conn: &Connection, key: &str, value: &str) -> rusqlite::Result<()> {
+pub fn write(conn: &Connection, key: &str, value: &str) -> rusqlite::Result<()> {
     conn.execute(
         "INSERT INTO settings (key, value) VALUES (?1, ?2)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",

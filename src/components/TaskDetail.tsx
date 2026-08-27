@@ -82,7 +82,7 @@ export function TaskDetail() {
     if (notes !== (task.notes ?? ""))
       patchTask({ id: task.id, notes: notes || null });
   };
-  const toggleLabel = (lid: number) => {
+  const toggleLabel = (lid: string) => {
     const has = task.labelIds.includes(lid);
     const next = has
       ? task.labelIds.filter((x) => x !== lid)

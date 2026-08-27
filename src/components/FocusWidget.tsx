@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { useStore } from "../store";
 import type { PomodoroPhase } from "../types";
 import { clock, formatDuration, secondsSince } from "../lib/duration";
@@ -42,6 +42,20 @@ export function FocusWidget() {
     return () => clearInterval(i);
   }, [pomodoro?.running, activeTimer]);
 
+  // Click anywhere outside the card closes it, same as the ✕ button.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showFocus) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (rootRef.current?.contains(target)) return;
+      if (target instanceof Element && target.closest("[data-focus-toggle]")) return;
+      toggleFocus();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [showFocus, toggleFocus]);
+
   if (!showFocus) return null;
 
   const p = pomodoro;
@@ -53,7 +67,10 @@ export function FocusWidget() {
   const activeElapsed = activeTimer ? secondsSince(activeTimer.startAt) : 0;
 
   return (
-    <div class="fixed bottom-4 left-4 z-50 w-72 animate-fade-rise overflow-hidden rounded-2xl border border-[var(--color-border-strong)] bg-[var(--color-elevated)] shadow-2xl shadow-black/50">
+    <div
+      ref={rootRef}
+      class="fixed bottom-4 left-4 z-50 w-72 animate-fade-rise overflow-hidden rounded-2xl border border-[var(--color-border-strong)] bg-[var(--color-elevated)] shadow-2xl shadow-black/50"
+    >
       {/* Header */}
       <div class="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-2.5">
         <span class="text-xs font-semibold uppercase tracking-wider text-[var(--color-faint)]">

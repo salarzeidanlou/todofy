@@ -1,5 +1,6 @@
 import { render } from "preact";
 import { QuickCapture } from "./components/QuickCapture";
+import { ContextMenu } from "./components/ContextMenu";
 import { applyTheme, initialTheme } from "./lib/theme";
 import "./styles/global.css";
 
@@ -8,4 +9,10 @@ import "./styles/global.css";
 applyTheme(initialTheme());
 document.body.style.background = "transparent";
 
-render(<QuickCapture />, document.getElementById("root")!);
+render(
+  <>
+    <QuickCapture />
+    <ContextMenu />
+  </>,
+  document.getElementById("root")!,
+);

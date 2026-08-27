@@ -3,6 +3,7 @@ import { useEffect, useState } from "preact/hooks";
 import { getVersion } from "@tauri-apps/api/app";
 import { api } from "../lib/api";
 import { useStore } from "../store";
+import { AccountSection } from "./AccountSection";
 import {
   BellIcon,
   BoltIcon,
@@ -140,6 +141,8 @@ export function SettingsView() {
       </header>
 
       <div class="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-8 pt-2 pb-8">
+        <AccountSection />
+
         {/* Startup */}
         <Section title="Startup">
           <Row

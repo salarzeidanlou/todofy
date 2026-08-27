@@ -13,7 +13,7 @@ const DEFAULT_REMINDER_HOUR: u32 = 9;
 /// `reminder-fired` event the frontend listens for.
 #[derive(Serialize, Clone)]
 struct DueReminder {
-    id: i64,
+    id: String,
     title: String,
 }
 
@@ -44,7 +44,7 @@ fn tick(app: &AppHandle) -> Result<(), String> {
             // Fires even when the window is hidden in the tray, since this runs
             // on a background thread. Routes to the custom popup or the OS per
             // the user's setting.
-            crate::notify::send(app, &r.title, "⏰ Reminder · todofy", Some(r.id));
+            crate::notify::send(app, &r.title, "⏰ Reminder · todofy", Some(r.id.clone()));
         }
         // The custom popup already is our in-app surface; only emit the toast
         // for the main window when we're using OS notifications, to avoid a
@@ -70,7 +70,7 @@ fn collect_due(app: &AppHandle) -> Result<Vec<DueReminder>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT id, title, remind_at, due_date FROM tasks
-             WHERE status = 'active' AND notified = 0
+             WHERE status = 'active' AND notified = 0 AND deleted_at IS NULL
                AND (remind_at IS NOT NULL OR due_date IS NOT NULL)",
         )
         .map_err(|e| e.to_string())?;
@@ -78,21 +78,21 @@ fn collect_due(app: &AppHandle) -> Result<Vec<DueReminder>, String> {
     let rows = stmt
         .query_map([], |r| {
             Ok((
-                r.get::<_, i64>(0)?,
+                r.get::<_, String>(0)?,
                 r.get::<_, String>(1)?,
                 r.get::<_, Option<String>>(2)?,
                 r.get::<_, Option<String>>(3)?,
             ))
         })
         .map_err(|e| e.to_string())?
-        .collect::<rusqlite::Result<Vec<(i64, String, Option<String>, Option<String>)>>>()
+        .collect::<rusqlite::Result<Vec<(String, String, Option<String>, Option<String>)>>>()
         .map_err(|e| e.to_string())?;
 
     let mut due = Vec::new();
     for (id, title, remind_at, due_date) in rows {
         let fires_at = reminder_instant(remind_at.as_deref(), due_date.as_deref());
         if fires_at.map(|t| t <= now).unwrap_or(false) {
-            conn.execute("UPDATE tasks SET notified = 1 WHERE id = ?1", [id])
+            conn.execute("UPDATE tasks SET notified = 1 WHERE id = ?1", [&id])
                 .map_err(|e| e.to_string())?;
             due.push(DueReminder { id, title });
         }

@@ -129,6 +129,21 @@ body {
   animation: slide-left 0.2s ease-out;
 }
 
+/* Depleting auto-dismiss bar on the notification popup. Duration is set inline
+   and play-state is paused while the card is hovered. */
+@keyframes progress-shrink {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+.animate-progress {
+  transform-origin: left;
+  animation: progress-shrink linear forwards;
+}
+
 /* A quick confetti burst on task completion. Each piece is translated to its
    own (--dx,--dy) offset and spun by (--rot), then fades. Disabled wholesale
    by the reduced-motion block below. */
