@@ -1,7 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { useAuth } from "../lib/auth";
 import { useSync, type SyncStatus } from "../lib/sync";
-import { CloseIcon, UserIcon } from "./Icons";
+import { CloseIcon, EyeIcon, EyeOffIcon, UserIcon } from "./Icons";
 
 type Mode = "signin" | "signup";
 
@@ -235,6 +235,7 @@ function AuthModal({
             autocomplete={signup ? "new-password" : "current-password"}
             placeholder={signup ? "At least 6 characters" : "••••••••"}
             onInput={setPassword}
+            revealable
           />
 
           {error && (
@@ -265,17 +266,19 @@ function AuthModal({
               setMode(signup ? "signin" : "signup");
               setError(null);
             }}
-            class="text-xs text-[var(--color-muted)] transition-colors hover:text-[var(--color-text)]"
+            class="group text-xs text-[var(--color-muted)]"
           >
             {signup ? (
               <>
                 Already have an account?{" "}
-                <span class="font-medium text-[var(--color-accent)]">Sign in</span>
+                <span class="font-medium text-[var(--color-accent)] transition-colors group-hover:text-[var(--color-accent-hover)]">
+                  Sign in
+                </span>
               </>
             ) : (
               <>
                 New to todofy?{" "}
-                <span class="font-medium text-[var(--color-accent)]">
+                <span class="font-medium text-[var(--color-accent)] transition-colors group-hover:text-[var(--color-accent-hover)]">
                   Create an account
                 </span>
               </>
@@ -294,6 +297,7 @@ function Field({
   placeholder,
   autocomplete,
   onInput,
+  revealable,
 }: {
   label: string;
   type: string;
@@ -301,20 +305,43 @@ function Field({
   placeholder?: string;
   autocomplete?: string;
   onInput: (value: string) => void;
+  revealable?: boolean;
 }) {
+  const [reveal, setReveal] = useState(false);
+  const inputType = revealable && reveal ? "text" : type;
   return (
     <label class="flex flex-col gap-1 text-left">
       <span class="text-[10px] font-medium uppercase tracking-wider text-[var(--color-faint)]">
         {label}
       </span>
-      <input
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        autocomplete={autocomplete}
-        onInput={(e) => onInput(e.currentTarget.value)}
-        class="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm outline-none transition-colors focus:border-[var(--color-accent)]"
-      />
+      <div class="relative">
+        <input
+          type={inputType}
+          value={value}
+          placeholder={placeholder}
+          autocomplete={autocomplete}
+          onInput={(e) => onInput(e.currentTarget.value)}
+          class={`w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] py-2 pl-3 text-sm outline-none transition-colors focus:border-[var(--color-accent)] ${
+            revealable ? "pr-10" : "pr-3"
+          }`}
+        />
+        {revealable && (
+          <button
+            type="button"
+            tabIndex={-1}
+            onClick={() => setReveal((r) => !r)}
+            title={reveal ? "Hide password" : "Show password"}
+            aria-label={reveal ? "Hide password" : "Show password"}
+            class="absolute inset-y-0 right-0 grid w-10 place-items-center text-[var(--color-faint)] transition-colors hover:text-[var(--color-text)]"
+          >
+            {reveal ? (
+              <EyeOffIcon width={16} height={16} />
+            ) : (
+              <EyeIcon width={16} height={16} />
+            )}
+          </button>
+        )}
+      </div>
     </label>
   );
 }

@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.7.1 — 2026-08-27
+
+### Fixed
+
+- Account sign-in and sync failed with a "Load failed" error in the 1.7.0 release build. The packaged app's Content-Security-Policy didn't allow the Supabase origin in `connect-src`, so every auth and sync request was blocked by the webview. Supabase's `https`/`wss` origins are now permitted
+- The Supabase publishable key was read from a `NEXT_PUBLIC_*` environment variable that Vite never exposes to the client; it's now read from `VITE_SUPABASE_PUBLISHABLE_KEY`
+
+### Changed
+
+- Added a show/hide toggle to the password field in the sign-in modal
+- Hovering the "Create an account" / "Sign in" link now highlights only the link text, not the whole line
+
 ## v1.7.0 — 2026-08-27
 
 ### Added
