@@ -13,18 +13,18 @@ export const api = {
   listTasks: () => invoke<Task[]>("list_tasks"),
   createTask: (task: NewTask) => invoke<Task>("create_task", { task }),
   updateTask: (patch: TaskPatch) => invoke<Task>("update_task", { patch }),
-  reorderTask: (id: number, orderIndex: number) =>
+  reorderTask: (id: string, orderIndex: number) =>
     invoke<Task>("reorder_task", { id, orderIndex }),
-  toggleTask: (id: number, done: boolean) =>
+  toggleTask: (id: string, done: boolean) =>
     invoke<Task>("toggle_task", { id, done }),
-  deleteTask: (id: number) => invoke<void>("delete_task", { id }),
+  deleteTask: (id: string) => invoke<void>("delete_task", { id }),
 
   listLabels: () => invoke<Label[]>("list_labels"),
   createLabel: (name: string, color: string) =>
     invoke<Label>("create_label", { name, color }),
-  updateLabel: (id: number, name: string, color: string) =>
+  updateLabel: (id: string, name: string, color: string) =>
     invoke<Label>("update_label", { id, name, color }),
-  deleteLabel: (id: number) => invoke<void>("delete_label", { id }),
+  deleteLabel: (id: string) => invoke<void>("delete_label", { id }),
 
   getSetting: (key: string) => invoke<string | null>("get_setting", { key }),
   setSetting: (key: string, value: string) =>
@@ -37,7 +37,7 @@ export const api = {
   sendTestNotification: () => invoke<string>("send_test_notification"),
 
   // Per-task stopwatch
-  startTimer: (id: number) => invoke<ActiveTimer | null>("start_timer", { id }),
+  startTimer: (id: string) => invoke<ActiveTimer | null>("start_timer", { id }),
   stopTimer: () => invoke<void>("stop_timer"),
   activeTimer: () => invoke<ActiveTimer | null>("active_timer"),
   focusHistory: (limit = 200) =>

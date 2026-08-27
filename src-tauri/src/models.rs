@@ -15,7 +15,7 @@ where
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Label {
-    pub id: i64,
+    pub id: String,
     pub name: String,
     pub color: String,
 }
@@ -33,7 +33,7 @@ pub struct Subtask {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Task {
-    pub id: i64,
+    pub id: String,
     pub title: String,
     pub notes: Option<String>,
     pub due_date: Option<String>,
@@ -49,7 +49,7 @@ pub struct Task {
     /// Total focused seconds from completed stopwatch sessions.
     pub tracked_seconds: i64,
     /// Label ids attached to this task.
-    pub label_ids: Vec<i64>,
+    pub label_ids: Vec<String>,
     /// Checklist steps for breaking the task into smaller chunks.
     pub subtasks: Vec<Subtask>,
 }
@@ -63,7 +63,7 @@ pub struct NewTask {
     pub due_date: Option<String>,
     pub remind_at: Option<String>,
     pub priority: Option<i64>,
-    pub label_ids: Option<Vec<i64>>,
+    pub label_ids: Option<Vec<String>>,
     pub repeat: Option<String>,
 }
 
@@ -71,7 +71,7 @@ pub struct NewTask {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskPatch {
-    pub id: i64,
+    pub id: String,
     pub title: Option<String>,
     #[serde(default, deserialize_with = "double_option")]
     pub notes: Option<Option<String>>,
@@ -80,7 +80,7 @@ pub struct TaskPatch {
     #[serde(default, deserialize_with = "double_option")]
     pub remind_at: Option<Option<String>>,
     pub priority: Option<i64>,
-    pub label_ids: Option<Vec<i64>>,
+    pub label_ids: Option<Vec<String>>,
     pub pinned: Option<bool>,
     /// `Some(None)` clears the recurrence; `Some(Some(rule))` sets it.
     #[serde(default, deserialize_with = "double_option")]
@@ -93,7 +93,7 @@ pub struct TaskPatch {
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ActiveTimer {
-    pub task_id: i64,
+    pub task_id: String,
     pub title: String,
     pub start_at: String,
 }
@@ -102,8 +102,8 @@ pub struct ActiveTimer {
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionLog {
-    pub id: i64,
-    pub task_id: i64,
+    pub id: String,
+    pub task_id: String,
     pub title: String,
     pub start_at: String,
     pub end_at: String,

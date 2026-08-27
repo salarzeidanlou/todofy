@@ -46,7 +46,8 @@ Smart lists, labels, recurring tasks, focus timers, and reminders that actually 
 - ⌨️ **Keyboard‑first** — add, navigate, complete, and edit without touching the mouse
 - 🪟 **System tray** — closes to tray and keeps running so reminders never miss; start/pause the Pomodoro, stop the task timer, and watch the live countdown right from the tray
 - 🧭 **Collapsible sidebar** — go full or minimal
-- 💾 **Local‑first** — everything is stored in a local SQLite database; no account, no cloud, no tracking
+- ☁️ **Optional account sync** — sign in with an email and password to sync your tasks, labels, and focus history across devices (backed by Supabase, with row‑level security). Sessions are kept in your OS secret store, and the whole thing is opt‑in
+- 💾 **Local‑first** — everything is stored in a local SQLite database and works fully offline; sync is additive, and with no account there's no cloud and no tracking
 
 ## 📸 Screenshots
 
@@ -166,6 +167,7 @@ bunx tauri icon app-icon.svg
 | Styling | [Tailwind CSS 4](https://tailwindcss.com) with a custom design system |
 | State   | [Zustand](https://github.com/pmndrs/zustand)                          |
 | Storage | SQLite via [rusqlite](https://github.com/rusqlite/rusqlite)           |
+| Sync    | [Supabase](https://supabase.com) (Postgres + Auth), optional          |
 | Build   | [Vite](https://vite.dev) + [Bun](https://bun.sh)                      |
 
 ## 📁 Project structure
@@ -189,6 +191,8 @@ todofy/
 │       ├── notify.rs       # notification delivery (portal / native)
 │       ├── popup.rs        # custom corner notification window
 │       ├── tray.rs         # system tray + live timer controls
+│       ├── sync.rs         # account-sync merge (push/pull, last-write-wins)
+│       ├── secret.rs       # OS keychain access for the session
 │       └── lib.rs          # app setup
 └── app-icon.svg            # source for the app icon
 ```
@@ -202,6 +206,7 @@ todofy/
 - [x] Run on startup
 - [x] Subtasks & checklists
 - [x] Search & filters
+- [x] Optional account sync across devices
 
 ## 🤝 Contributing
 

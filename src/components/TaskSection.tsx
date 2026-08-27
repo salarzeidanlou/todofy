@@ -26,19 +26,19 @@ export function TaskSection({
   reorderable: boolean;
 }) {
   const reorderTask = useStore((s) => s.reorderTask);
-  const [dragId, setDragId] = useState<number | null>(null);
-  const [over, setOver] = useState<{ id: number; edge: Edge } | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [over, setOver] = useState<{ id: string; edge: Edge } | null>(null);
 
   // Live refs so the document-level pointer listeners always read fresh values
   // instead of the values captured when the drag started.
-  const rows = useRef(new Map<number, HTMLElement>());
+  const rows = useRef(new Map<string, HTMLElement>());
   const tasksRef = useRef(tasks);
   tasksRef.current = tasks;
-  const dragIdRef = useRef<number | null>(null);
-  const overRef = useRef<{ id: number; edge: Edge } | null>(null);
+  const dragIdRef = useRef<string | null>(null);
+  const overRef = useRef<{ id: string; edge: Edge } | null>(null);
   const movedRef = useRef(false);
 
-  const setRow = (id: number) => (el: HTMLElement | null) => {
+  const setRow = (id: string) => (el: HTMLElement | null) => {
     if (el) rows.current.set(id, el);
     else rows.current.delete(id);
   };
@@ -52,7 +52,7 @@ export function TaskSection({
       setDragId(null);
       setOver(null);
     };
-    if (dId == null || !ov || dId === ov.id) return finish();
+    if (dId === null || !ov || dId === ov.id) return finish();
 
     // Position relative to the list with the dragged task removed.
     const rest = tasksRef.current.filter((t) => t.id !== dId);
@@ -74,7 +74,7 @@ export function TaskSection({
   };
 
   const startDrag =
-    (id: number) => (e: JSX.TargetedPointerEvent<HTMLElement>) => {
+    (id: string) => (e: JSX.TargetedPointerEvent<HTMLElement>) => {
       if (!reorderable || e.button !== 0) return;
       // Stop the row's onClick (task selection) from firing on release, and
       // suppress text selection while dragging.
@@ -92,7 +92,7 @@ export function TaskSection({
         // Find the insertion point by comparing the pointer against each other
         // row's midpoint. Falls through to "after the last row" when the
         // pointer is below every candidate.
-        let target: { id: number; edge: Edge } | null = null;
+        let target: { id: string; edge: Edge } | null = null;
         const others = tasksRef.current.filter(
           (t) => t.id !== dragIdRef.current,
         );

@@ -26,14 +26,14 @@ interface State {
   tasks: Task[];
   labels: Label[];
   view: ViewId;
-  selectedId: number | null;
+  selectedId: string | null;
   loading: boolean;
   reminders: ActiveReminder[];
   theme: Theme;
   confirm: ConfirmOptions | null;
   sidebarCollapsed: boolean;
   searchQuery: string;
-  filterLabelIds: number[];
+  filterLabelIds: string[];
   filterPriorities: number[];
 
   activeTimer: ActiveTimer | null;
@@ -48,9 +48,9 @@ interface State {
 
   load: () => Promise<void>;
   setView: (view: ViewId) => void;
-  select: (id: number | null) => void;
+  select: (id: string | null) => void;
   setSearchQuery: (q: string) => void;
-  toggleFilterLabel: (id: number) => void;
+  toggleFilterLabel: (id: string) => void;
   toggleFilterPriority: (p: number) => void;
   clearFilters: () => void;
   toggleTheme: () => void;
@@ -58,27 +58,27 @@ interface State {
   toggleShortcuts: (open?: boolean) => void;
   toggleCelebrate: () => void;
   pushReminder: (r: ActiveReminder) => void;
-  dismissReminder: (id: number) => void;
+  dismissReminder: (id: string) => void;
   requestConfirm: (opts: ConfirmOptions) => void;
   closeConfirm: () => void;
 
   addTask: (input: NewTask) => Promise<void>;
   patchTask: (patch: TaskPatch) => Promise<void>;
-  reorderTask: (id: number, orderIndex: number) => Promise<void>;
-  toggleTask: (id: number, done: boolean) => Promise<void>;
-  snoozeTask: (id: number, minutes: number) => Promise<void>;
+  reorderTask: (id: string, orderIndex: number) => Promise<void>;
+  toggleTask: (id: string, done: boolean) => Promise<void>;
+  snoozeTask: (id: string, minutes: number) => Promise<void>;
   rescheduleOverdue: () => Promise<void>;
-  removeTask: (id: number) => Promise<void>;
+  removeTask: (id: string) => Promise<void>;
 
   addLabel: (name: string, color: string) => Promise<Label>;
-  editLabel: (id: number, name: string, color: string) => Promise<void>;
-  removeLabel: (id: number) => Promise<void>;
+  editLabel: (id: string, name: string, color: string) => Promise<void>;
+  removeLabel: (id: string) => Promise<void>;
 
   loadTimers: () => Promise<void>;
   onTimersChanged: () => Promise<void>;
   toggleFocus: () => void;
   refreshPomodoro: () => Promise<void>;
-  startTaskTimer: (id: number) => Promise<void>;
+  startTaskTimer: (id: string) => Promise<void>;
   stopTaskTimer: () => Promise<void>;
   pomodoroStart: () => Promise<void>;
   pomodoroPause: () => Promise<void>;
@@ -360,7 +360,7 @@ function sortTasks(tasks: Task[]): Task[] {
 export function applySearchAndFilters(
   tasks: Task[],
   searchQuery: string,
-  filterLabelIds: number[],
+  filterLabelIds: string[],
   filterPriorities: number[],
 ): Task[] {
   const query = searchQuery.trim().toLowerCase();
@@ -425,7 +425,7 @@ export function navCount(tasks: Task[], view: ViewId): number {
 }
 
 /** Task ids in on-screen order for the active view — drives keyboard nav. */
-export function visibleTaskIds(tasks: Task[], view: ViewId): number[] {
+export function visibleTaskIds(tasks: Task[], view: ViewId): string[] {
   const { searchQuery, filterLabelIds, filterPriorities } = useStore.getState();
   const inView = applySearchAndFilters(
     tasksForView(tasks, view),

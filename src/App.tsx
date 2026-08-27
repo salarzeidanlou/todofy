@@ -5,9 +5,12 @@ import {
 } from "@tauri-apps/plugin-notification";
 import { listen } from "@tauri-apps/api/event";
 import { activeCount, useStore } from "./store";
+import { useAuth } from "./lib/auth";
+import { initSync } from "./lib/sync";
 import { applyTheme } from "./lib/theme";
 import { useKeyboard } from "./lib/useKeyboard";
 import type { ActiveReminder } from "./types";
+import { ContextMenu, type MenuItem } from "./components/ContextMenu";
 import { Sidebar } from "./components/Sidebar";
 import { TaskList } from "./components/TaskList";
 import { TaskDetail } from "./components/TaskDetail";
@@ -30,12 +33,35 @@ export function App() {
   const toggleSidebar = useStore((s) => s.toggleSidebar);
   const selectedId = useStore((s) => s.selectedId);
   const select = useStore((s) => s.select);
+  const setView = useStore((s) => s.setView);
+  const toggleTheme = useStore((s) => s.toggleTheme);
+
+  const menuActions = (): MenuItem[] => [
+    {
+      label: "New task",
+      onClick: () => {
+        setView({ kind: "today" });
+        requestAnimationFrame(() =>
+          document.getElementById("quick-add-input")?.focus(),
+        );
+      },
+    },
+    { label: "Settings", onClick: () => setView({ kind: "settings" }) },
+    {
+      label: theme === "dark" ? "Light theme" : "Dark theme",
+      onClick: toggleTheme,
+    },
+  ];
 
   useKeyboard();
 
   useEffect(() => {
     load();
     loadTimers();
+    // Restore any saved Supabase session and watch for auth changes.
+    useAuth.getState().init();
+    // Wire account sync (runs on sign-in, then periodically + after edits).
+    initSync();
     // Ask for desktop notification permission once, up front.
     (async () => {
       if (!(await isPermissionGranted())) {
@@ -48,7 +74,7 @@ export function App() {
       pushReminder(e.payload);
     });
     // The custom notification popup was clicked — jump to that task.
-    const unOpen = listen<number>("reminder-open", (e) => {
+    const unOpen = listen<string>("reminder-open", (e) => {
       useStore.getState().select(e.payload);
     });
     // Refresh when a task is added from the quick-add window.
@@ -113,6 +139,7 @@ export function App() {
       <ConfirmDialog />
       <ShortcutsOverlay />
       <Celebration />
+      <ContextMenu appItems={menuActions} />
     </div>
   );
 }

@@ -65,6 +65,7 @@ export function Sidebar() {
         <button
           onClick={toggleFocus}
           title="Focus timer"
+          data-focus-toggle
           class="mt-auto grid h-9 w-9 place-items-center rounded-lg text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
         >
           <TimerIcon width={18} height={18} />
@@ -132,6 +133,7 @@ export function Sidebar() {
       <div class="mt-auto flex flex-col gap-0.5 border-t border-[var(--color-border)] pt-3">
         <button
           onClick={toggleFocus}
+          data-focus-toggle
           class="flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-sm text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
         >
           <TimerIcon width={18} height={18} />
