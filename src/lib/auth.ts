@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { Session } from "@supabase/supabase-js";
-import { supabase } from "./supabase";
+import { supabase, syncConfigured } from "./supabase";
 
 type AuthResult = { ok: true } | { ok: false; error: string };
 
@@ -22,6 +22,12 @@ export const useAuth = create<AuthState>((set) => ({
   email: null,
 
   init: () => {
+    // No project configured for this build: mark ready so the UI stops waiting,
+    // but never reach out to Supabase.
+    if (!syncConfigured) {
+      set({ ready: true });
+      return;
+    }
     supabase.auth.getSession().then(({ data }) => {
       set({
         session: data.session,

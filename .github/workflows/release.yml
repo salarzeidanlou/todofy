@@ -115,6 +115,9 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_SUPABASE_SCHEMA: ${{ secrets.VITE_SUPABASE_SCHEMA }}
         with:
           tagName: v${{ needs.check.outputs.version }}
           releaseName: 'todofy v${{ needs.check.outputs.version }}'

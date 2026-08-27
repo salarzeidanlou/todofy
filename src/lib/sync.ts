@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
-import { supabase } from "./supabase";
+import { supabase, syncConfigured } from "./supabase";
 import { useAuth } from "./auth";
 import { useStore } from "../store";
 
@@ -26,6 +26,7 @@ export const useSync = create<SyncState>((set, get) => ({
   error: null,
   syncNow: async () => {
     if (get().status === "syncing") return;
+    if (!syncConfigured) return;
     if (!useAuth.getState().session) return;
 
     set({ status: "syncing", error: null });

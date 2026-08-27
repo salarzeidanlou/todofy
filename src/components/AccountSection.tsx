@@ -1,6 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { useAuth } from "../lib/auth";
 import { useSync, type SyncStatus } from "../lib/sync";
+import { syncConfigured } from "../lib/supabase";
 import { CloseIcon, EyeIcon, EyeOffIcon, UserIcon } from "./Icons";
 
 type Mode = "signin" | "signup";
@@ -8,6 +9,22 @@ type Mode = "signin" | "signup";
 export function AccountSection() {
   const { ready, session, email, signIn, signUp, signOut } = useAuth();
   const [modalOpen, setModalOpen] = useState(false);
+
+  // Builds without a configured Supabase project ship with sync disabled.
+  if (!syncConfigured) {
+    return (
+      <section class="mb-6">
+        <h3 class="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-[var(--color-faint)]">
+          Account
+        </h3>
+        <div class="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+          <div class="px-4 py-3.5 text-sm text-[var(--color-muted)]">
+            Account sync isn't configured in this build.
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section class="mb-6">
