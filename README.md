@@ -170,6 +170,28 @@ bun run tauri build
 
 Bundles are written to `src-tauri/target/release/bundle/` (`.deb`, `.rpm`, and `.AppImage`).
 
+### Optional: self‑host account sync
+
+Sync is **off by default** — todofy is local‑first and works fully offline without it. To run your own sync backend so your tasks, labels, and focus history follow you across devices (with nothing going through anyone else's server):
+
+1. **Create a Supabase project** — the free tier is plenty — at [supabase.com](https://supabase.com), or use any Postgres you control. Make sure **Email** auth is enabled (it is by default).
+2. **Apply the schema.** Open the project's **SQL Editor** and run [`supabase/migrations/20260826120000_sync_schema.sql`](supabase/migrations/20260826120000_sync_schema.sql), or use the [Supabase CLI](https://supabase.com/docs/guides/cli):
+
+   ```bash
+   supabase link --project-ref <your-project-ref>
+   supabase db push
+   ```
+
+   This creates the four per‑user tables (`tasks`, `labels`, `task_labels`, `time_sessions`) with row‑level security, so a signed‑in user can only ever read or write their own rows.
+3. **Point todofy at your project.** Copy the env template and fill in your project's URL and publishable key — both are safe to ship in a client; row‑level security is what actually protects the data:
+
+   ```bash
+   cp .env.example .env
+   # VITE_SUPABASE_URL=https://<your-project-ref>.supabase.co
+   # VITE_SUPABASE_PUBLISHABLE_KEY=<your-publishable-key>
+   ```
+4. **Build** as above, then open **Settings → Account** in the app and sign up — sync turns on from there.
+
 ### Regenerate the app icon
 
 ```bash
