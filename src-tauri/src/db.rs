@@ -174,15 +174,19 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// Baseline `updated_at` for pre-sync rows: one tick past the epoch, so it's the
+/// oldest possible yet still clears the epoch-seeded sync watermark.
+const PRE_SYNC_BASELINE: &str = "'1970-01-01T00:00:01+00:00'";
+
 /// Add `updated_at` / `deleted_at` to a syncable table, backfilling
 /// `updated_at` from an existing timestamp column so pre-sync rows get a sane
 /// baseline. Idempotent via the column guards.
 fn add_sync_columns(conn: &Connection) -> rusqlite::Result<()> {
     for (table, backfill) in [
         ("tasks", "created_at"),
-        ("labels", "'1970-01-01T00:00:00+00:00'"),
+        ("labels", PRE_SYNC_BASELINE),
         ("time_sessions", "start_at"),
-        ("task_labels", "'1970-01-01T00:00:00+00:00'"),
+        ("task_labels", PRE_SYNC_BASELINE),
     ] {
         if !column_exists(conn, table, "updated_at") {
             conn.execute(

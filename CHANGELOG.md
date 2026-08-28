@@ -1,6 +1,12 @@
 # Changelog
 
-## v1.7.2 — 2026-08-27
+## v1.7.3 — 2026-08-28
+
+### Fixed
+
+- Account sync no longer fails with `insert or update on table "task_labels" violates foreign key constraint "task_labels_label_id_fkey"`. A label whose `updated_at` sat at or below the sync watermark (already synced, or stamped there when an older database was migrated) was skipped on push, yet assigning it to a task pushed the association — which then referenced a label the server had never seen. A changed association now carries its parent task and label along in the same push, so a child never lands ahead of its parent
+
+
 
 ### Fixed
 

@@ -7,9 +7,10 @@
 use crate::db::Db;
 use crate::settings;
 use chrono::DateTime;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashSet;
 use tauri::State;
 
 const WATERMARK_KEY: &str = "sync_last_synced_at";
@@ -185,12 +186,89 @@ fn collect_changes(conn: &Connection, since: &str) -> rusqlite::Result<SyncBundl
         }
     }
 
+    // Include any referenced parent missing from the bundle, so a changed
+    // child never pushes ahead of a parent still below the watermark.
+    let have_task: HashSet<&str> = tasks.iter().map(|t| t.id.as_str()).collect();
+    let have_label: HashSet<&str> = labels.iter().map(|l| l.id.as_str()).collect();
+    let mut need_tasks: HashSet<String> = HashSet::new();
+    let mut need_labels: HashSet<String> = HashSet::new();
+    for tl in &task_labels {
+        if !have_task.contains(tl.task_id.as_str()) {
+            need_tasks.insert(tl.task_id.clone());
+        }
+        if !have_label.contains(tl.label_id.as_str()) {
+            need_labels.insert(tl.label_id.clone());
+        }
+    }
+    for s in &sessions {
+        if !have_task.contains(s.task_id.as_str()) {
+            need_tasks.insert(s.task_id.clone());
+        }
+    }
+    drop((have_task, have_label));
+    for id in need_labels {
+        if let Some(row) = fetch_label(conn, &id)? {
+            labels.push(row);
+        }
+    }
+    for id in need_tasks {
+        if let Some(row) = fetch_task(conn, &id)? {
+            tasks.push(row);
+        }
+    }
+
     Ok(SyncBundle {
         tasks,
         labels,
         task_labels,
         sessions,
     })
+}
+
+fn fetch_label(conn: &Connection, id: &str) -> rusqlite::Result<Option<SyncLabel>> {
+    conn.query_row(
+        "SELECT id, name, color, updated_at, deleted_at FROM labels WHERE id = ?1",
+        [id],
+        |r| {
+            Ok(SyncLabel {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                color: r.get(2)?,
+                updated_at: r.get(3)?,
+                deleted_at: r.get(4)?,
+            })
+        },
+    )
+    .optional()
+}
+
+fn fetch_task(conn: &Connection, id: &str) -> rusqlite::Result<Option<SyncTask>> {
+    conn.query_row(
+        "SELECT id, title, notes, due_date, remind_at, status, priority, created_at,
+                completed_at, order_index, pinned, repeat, subtasks, updated_at, deleted_at
+         FROM tasks WHERE id = ?1",
+        [id],
+        |r| {
+            Ok(SyncTask {
+                id: r.get(0)?,
+                title: r.get(1)?,
+                notes: r.get(2)?,
+                due_date: r.get(3)?,
+                remind_at: r.get(4)?,
+                status: r.get(5)?,
+                priority: r.get(6)?,
+                created_at: r.get(7)?,
+                completed_at: r.get(8)?,
+                order_index: r.get(9)?,
+                pinned: r.get::<_, i64>(10)? != 0,
+                repeat: r.get(11)?,
+                subtasks: subtasks_value(r.get(12)?),
+                updated_at: r.get(13)?,
+                deleted_at: r.get(14)?,
+            })
+        },
+    )
+    .optional()
 }
 
 // ------------------------------------------------------------------- pull side
@@ -458,6 +536,36 @@ mod tests {
         assert_eq!(bundle.labels[0].id, "new");
         // The tombstone travels so the deletion can propagate.
         assert!(bundle.labels[0].deleted_at.is_some());
+    }
+
+    #[test]
+    fn changed_association_drags_its_parents_along() {
+        let conn = setup();
+        // A label and task synced long ago (updated_at below the watermark).
+        conn.execute(
+            "INSERT INTO labels (id, name, color, updated_at) VALUES ('l1', 'home', '#111', ?1)",
+            ["2020-01-01T00:00:00+00:00"],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO tasks (id, title, created_at, updated_at) VALUES ('t1', 'x', ?1, ?1)",
+            ["2020-01-01T00:00:00+00:00"],
+        )
+        .unwrap();
+        // A fresh association above the watermark.
+        conn.execute(
+            "INSERT INTO task_labels (task_id, label_id, updated_at) VALUES ('t1', 'l1', ?1)",
+            ["2026-06-01T00:00:00+00:00"],
+        )
+        .unwrap();
+
+        let bundle = collect_changes(&conn, "2026-01-01T00:00:00+00:00").unwrap();
+        // The association is newer than the watermark, so it must ship — and so
+        // must its parents, even though they weren't touched, or the push would
+        // trip the foreign key.
+        assert_eq!(bundle.task_labels.len(), 1);
+        assert_eq!(bundle.labels.iter().map(|l| l.id.as_str()).collect::<Vec<_>>(), ["l1"]);
+        assert_eq!(bundle.tasks.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["t1"]);
     }
 
     #[test]
