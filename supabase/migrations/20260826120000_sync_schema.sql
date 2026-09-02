@@ -66,23 +66,23 @@ alter table public.time_sessions enable row level security;
 
 create policy "own labels" on public.labels
   for all to authenticated
-  using (user_id = auth.uid())
-  with check (user_id = auth.uid());
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
 
 create policy "own tasks" on public.tasks
   for all to authenticated
-  using (user_id = auth.uid())
-  with check (user_id = auth.uid());
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
 
 create policy "own task_labels" on public.task_labels
   for all to authenticated
-  using (user_id = auth.uid())
-  with check (user_id = auth.uid());
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
 
 create policy "own time_sessions" on public.time_sessions
   for all to authenticated
-  using (user_id = auth.uid())
-  with check (user_id = auth.uid());
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
 
 -- RLS decides which rows; these grant the signed-in role table-level DML at all.
 -- No grants to `anon` — sync always runs authenticated.

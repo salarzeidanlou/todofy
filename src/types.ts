@@ -32,6 +32,32 @@ export interface Task {
   subtasks: Subtask[];
 }
 
+/** A free-form journal entry, grouped by `entryDate` for the calendar rail. */
+export interface JournalEntry {
+  id: string; // UUID
+  title: string | null;
+  body: string;
+  mood: number | null; // 1..5
+  entryDate: string; // YYYY-MM-DD
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NewJournalEntry {
+  title?: string | null;
+  body?: string | null;
+  mood?: number | null;
+  entryDate: string;
+}
+
+export interface JournalPatch {
+  id: string;
+  title?: string | null;
+  body?: string;
+  mood?: number | null;
+  entryDate?: string;
+}
+
 /** The currently running per-task stopwatch. */
 export interface ActiveTimer {
   taskId: string;
@@ -104,4 +130,6 @@ export type ViewId =
   | { kind: "labels" }
   | { kind: "settings" }
   | { kind: "focus" }
+  | { kind: "journal" }
+  | { kind: "date"; date: string }
   | { kind: "label"; labelId: string };

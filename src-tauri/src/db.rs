@@ -108,6 +108,20 @@ pub fn init(conn: &Connection) -> rusqlite::Result<()> {
         );
         INSERT OR IGNORE INTO pomodoro (id) VALUES (1);
 
+        -- Free-form journal entries. Multiple per day; `entry_date` groups them
+        -- for the calendar rail and the day summary.
+        CREATE TABLE IF NOT EXISTS journal_entries (
+            id         TEXT PRIMARY KEY,   -- UUID, generated on-device
+            title      TEXT,
+            body       TEXT NOT NULL DEFAULT '',
+            mood       INTEGER,            -- 1..5, optional
+            entry_date TEXT NOT NULL,      -- ISO date (YYYY-MM-DD)
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,      -- RFC3339, bumped on every write
+            deleted_at TEXT                -- soft-delete tombstone; NULL while live
+        );
+        CREATE INDEX IF NOT EXISTS idx_journal_date ON journal_entries(entry_date);
+
         CREATE INDEX IF NOT EXISTS idx_tasks_status   ON tasks(status);
         CREATE INDEX IF NOT EXISTS idx_tasks_due      ON tasks(due_date);
         CREATE INDEX IF NOT EXISTS idx_tasks_remind   ON tasks(remind_at);
@@ -115,6 +129,16 @@ pub fn init(conn: &Connection) -> rusqlite::Result<()> {
     )?;
     migrate(conn)?;
     Ok(())
+}
+
+/// True if a table named `table` exists.
+fn table_exists(conn: &Connection, table: &str) -> bool {
+    conn.query_row(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        params![table],
+        |_| Ok(()),
+    )
+    .is_ok()
 }
 
 /// True if `table` already has a column named `column`.
@@ -170,6 +194,26 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     // `deleted_at` tombstones so deletions propagate instead of vanishing.
     // Runs after the UUID conversion so it only ever touches TEXT-keyed tables.
     add_sync_columns(conn)?;
+
+    // Journal: free-form entries with a per-day grouping key. Born with sync
+    // columns, so it runs after the conversions above.
+    if !table_exists(conn, "journal_entries") {
+        conn.execute_batch(
+            "
+            CREATE TABLE journal_entries (
+                id         TEXT PRIMARY KEY,
+                title      TEXT,
+                body       TEXT NOT NULL DEFAULT '',
+                mood       INTEGER,
+                entry_date TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                deleted_at TEXT
+            );
+            CREATE INDEX idx_journal_date ON journal_entries(entry_date);
+            ",
+        )?;
+    }
 
     Ok(())
 }
@@ -633,6 +677,25 @@ mod tests {
                 .unwrap();
             assert_eq!(n, 0, "{table} has un-backfilled updated_at");
         }
+    }
+
+    #[test]
+    fn init_creates_journal_table_on_legacy_db() {
+        let conn = Connection::open_in_memory().unwrap();
+        seed_legacy(&conn);
+        init(&conn).unwrap();
+
+        assert!(table_exists(&conn, "journal_entries"));
+        conn.execute(
+            "INSERT INTO journal_entries (id, body, entry_date, created_at, updated_at)
+             VALUES ('j1', 'hello', '2026-05-01', 'c', 'c')",
+            [],
+        )
+        .unwrap();
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM journal_entries", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 1);
     }
 
     #[test]

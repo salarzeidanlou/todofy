@@ -18,7 +18,7 @@ const AUTO_DISMISS_MS = 6000;
  * card and dismisses after a timeout (paused while hovered).
  */
 export function NotificationPopup() {
-  const [note, setNote] = useState<NotifyPayload | null>(null);
+  const [note, setNote] = useState<NotifyPayload | null>(() => null);
   const [paused, setPaused] = useState(false);
   const [cycle, setCycle] = useState(0);
   const timer = useRef<number | undefined>(undefined);
@@ -78,25 +78,23 @@ export function NotificationPopup() {
   if (!note) return null;
 
   return (
-    <div class="flex h-screen w-screen items-stretch p-2">
+    <div class="notification-stage">
       <div
         key={note.nonce}
         onMouseEnter={pause}
         onMouseLeave={startTimer}
         onClick={open}
-        class="group relative flex w-full animate-slide-left cursor-pointer overflow-hidden rounded-2xl border border-[var(--color-border-strong)] bg-[var(--color-elevated)] shadow-2xl shadow-black/50 ring-1 ring-white/5"
+        class="notification-card group animate-slide-left"
       >
-        <div class="flex flex-1 items-start gap-3 p-3.5">
-          <span class="mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--color-accent-soft)] text-[var(--color-accent)] ring-1 ring-inset ring-[var(--color-accent)]/25">
+        <div class="notification-accent" />
+        <div class="notification-content">
+          <span class="notification-icon">
             <BellIcon width={19} height={19} />
           </span>
-          <div class="min-w-0 flex-1 pr-5">
-            <p class="truncate text-sm font-semibold text-[var(--color-text)]">
-              {note.title}
-            </p>
-            <p class="mt-0.5 line-clamp-2 text-xs leading-relaxed text-[var(--color-muted)]">
-              {note.body}
-            </p>
+          <div class="notification-copy">
+            <div class="notification-eyebrow">Reminder · now</div>
+            <p class="notification-title">{note.title}</p>
+            <p class="notification-body">{note.body}</p>
           </div>
         </div>
 
@@ -106,7 +104,7 @@ export function NotificationPopup() {
             dismiss();
           }}
           title="Dismiss"
-          class="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-lg text-[var(--color-faint)] opacity-0 transition-opacity hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)] group-hover:opacity-100"
+          class="notification-dismiss"
         >
           <CloseIcon width={14} height={14} />
         </button>
@@ -117,7 +115,7 @@ export function NotificationPopup() {
             animationDuration: `${AUTO_DISMISS_MS}ms`,
             animationPlayState: paused ? "paused" : "running",
           }}
-          class="animate-progress absolute bottom-0 left-0 h-[3px] w-full bg-gradient-to-r from-[var(--color-accent)] to-[var(--color-accent-hover)]"
+          class="notification-progress animate-progress"
         />
       </div>
     </div>

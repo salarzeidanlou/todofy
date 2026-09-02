@@ -2,7 +2,7 @@
   "name": "todofy",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
-  "version": "1.7.3",
+  "version": "1.8.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,11 +11,14 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
     "@supabase/supabase-js": "^2.112.4",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-opener": "^2",
     "chrono-node": "^2.10.1",
+    "dompurify": "^3.4.14",
+    "marked": "^18.0.11",
     "preact": "^10.25.1",
     "zustand": "^5.0.14"
   },

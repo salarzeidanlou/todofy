@@ -142,7 +142,7 @@ export function TaskSection({
     };
 
   return (
-    <div class="flex flex-col gap-0.5">
+    <div class="task-row-list">
       {tasks.map((t) => (
         <TaskItem
           key={t.id}

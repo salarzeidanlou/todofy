@@ -31,6 +31,7 @@ Smart lists, labels, recurring tasks, focus timers, and reminders that actually 
 - 🔁 **Recurring tasks** — repeat _daily, every weekday, weekly, monthly,_ or _yearly_; completing one rolls it forward to the next occurrence instead of finishing it (also from natural language — _"water plants every week"_)
 - 🍅 **Focus timers** — a built‑in **Pomodoro** (focus / short & long breaks) _and_ a **per‑task stopwatch**; both keep counting while hidden in the tray and survive a restart, and never auto‑stop — they nudge you instead
 - 📊 **Focus screen** — start the Pomodoro, tune phase lengths, and review your focus history (Today / This week / total, grouped by day)
+- 📔 **Journal** — write free‑form entries with **Markdown**, an optional title, and a 1–5 **mood**; entries group by day, mark journaled days in the calendar rail, and offer a one‑tap summary of what you completed and focused on that day (press **Shift+J** to jump in)
 - ✋ **Drag‑and‑drop reordering** — grab any task and drop it exactly where you want; your manual order sticks
 - 📌 **Pinning** — pin any task to float it to the top of its group, with a dedicated _Pinboard_ view
 - ✅ **Completed view** — every finished task, app-wide, newest first
@@ -53,31 +54,30 @@ Smart lists, labels, recurring tasks, focus timers, and reminders that actually 
 
 <table>
   <tr>
+    <td colspan="2">
+      <img src="docs/journal.png" alt="Journal view with a Markdown composer, mood picker, day-summary chip, and entries grouped by day" /><br />
+      <sub><b>Journal</b> — a Markdown composer with mood and a day‑summary nudge, entries grouped by day with journaled days marked in the calendar rail.</sub>
+    </td>
+  </tr>
+  <tr>
     <td width="50%">
-      <img src="docs/detail.png" alt="Task detail with a checklist / subtasks and progress bar" /><br />
-      <sub><b>Task detail</b> — break a task into a checklist with live progress.</sub>
+      <img src="docs/focus.png" alt="Redesigned Focus workspace with Pomodoro timer, session plan, and history" /><br />
+      <sub><b>Focus workspace</b> — one calm timer, a flexible session plan, and progress history.</sub>
     </td>
     <td width="50%">
       <img src="docs/upcoming.png" alt="Upcoming view with relative due dates grouped by day" /><br />
-      <sub><b>Upcoming</b> — due dates phrased relatively ("in 3 days").</sub>
+      <sub><b>Upcoming</b> — a clear next action with future work grouped by day.</sub>
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <img src="docs/focus.png" alt="Focus screen with a running Pomodoro timer and phase lengths" /><br />
-      <sub><b>Focus</b> — a built-in Pomodoro with tunable phases and history.</sub>
+      <img src="docs/settings.png" alt="Settings view showing appearance, keyboard, website, and GitHub links" /><br />
+      <sub><b>Settings</b> — focused preferences plus direct website and GitHub links.</sub>
     </td>
     <td width="50%">
-      <img src="docs/shortcuts.png" alt="Keyboard shortcuts cheat-sheet overlay" /><br />
-      <sub><b>Keyboard-first</b> — press <code>?</code> for the full cheat-sheet.</sub>
+      <img src="docs/quickadd.png" alt="Floating global quick-capture window" /><br />
+      <sub><b>Quick capture</b> — add a task from anywhere without leaving your flow.</sub>
     </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <img src="docs/detail-light.png" alt="todofy in its light theme" /><br />
-      <sub><b>Light theme</b> — dark by default, light when you want it.</sub>
-    </td>
-    <td width="50%"></td>
   </tr>
 </table>
 
@@ -129,7 +129,8 @@ todofy_1.7.3_x64_en-US.msi   # or the MSI
 | Key                    | Action                                                       |
 | ---------------------- | ------------------------------------------------------------ |
 | `Ctrl`+`Alt`+`A`       | Open the global quick‑add bar from anywhere (works app‑wide) |
-| `n`                    | Focus the quick‑add bar                                      |
+| `n`                    | New task — or a new journal entry when in the Journal        |
+| `Shift`+`J`            | Open the Journal and start a new entry                       |
 | `/`                    | Focus the search bar                                         |
 | `j` / `↓`              | Move to next task                                            |
 | `k` / `↑`              | Move to previous task                                        |
@@ -175,14 +176,14 @@ Bundles are written to `src-tauri/target/release/bundle/` (`.deb`, `.rpm`, and `
 Sync is **off by default** — todofy is local‑first and works fully offline without it. To run your own sync backend so your tasks, labels, and focus history follow you across devices (with nothing going through anyone else's server):
 
 1. **Create a Supabase project** — the free tier is plenty — at [supabase.com](https://supabase.com), or use any Postgres you control. Make sure **Email** auth is enabled (it is by default).
-2. **Apply the schema.** Open the project's **SQL Editor** and run [`supabase/migrations/20260826120000_sync_schema.sql`](supabase/migrations/20260826120000_sync_schema.sql), or use the [Supabase CLI](https://supabase.com/docs/guides/cli):
+2. **Apply the schema.** Open the project's **SQL Editor** and run the migrations in order — [`20260826120000_sync_schema.sql`](supabase/migrations/20260826120000_sync_schema.sql), [`20260902000000_journal.sql`](supabase/migrations/20260902000000_journal.sql), then [`20260902133603_sync_tombstones.sql`](supabase/migrations/20260902133603_sync_tombstones.sql) — or use the [Supabase CLI](https://supabase.com/docs/guides/cli):
 
    ```bash
    supabase link --project-ref <your-project-ref>
    supabase db push
    ```
 
-   This creates the four per‑user tables (`tasks`, `labels`, `task_labels`, `time_sessions`) with row‑level security, so a signed‑in user can only ever read or write their own rows.
+   This creates the five per‑user content tables in the default `public` schema, plus a content-free `sync_tombstones` deletion log. All tables use row-level security, so signed-in users can only access their own rows. Deleted content is physically removed after its marker is safely recorded, allowing other devices to learn the deletion without retaining task or journal text.
 3. **Point todofy at your project.** Copy the env template and fill in your project's URL and publishable key — both are safe to ship in a client; row‑level security is what actually protects the data:
 
    ```bash
@@ -216,8 +217,9 @@ bunx tauri icon app-icon.svg
 todofy/
 ├── src/                    # Preact frontend
 │   ├── components/         # UI (Sidebar, TaskList, TaskDetail, DatePicker,
-│   │                       #     FocusView, FocusWidget, SettingsView, …)
-│   ├── lib/                # dates, duration, theme, keyboard, nlp, repeat helpers
+│   │                       #     FocusView, JournalView, SettingsView, …)
+│   ├── lib/                # dates, duration, theme, keyboard, nlp, repeat,
+│   │                       #     markdown, journal helpers
 │   ├── store.ts            # Zustand store
 │   └── types.ts
 ├── src-tauri/              # Rust backend
@@ -247,6 +249,7 @@ todofy/
 - [x] Subtasks & checklists
 - [x] Search & filters
 - [x] Optional account sync across devices
+- [x] Journal with mood, Markdown, and day summaries
 
 ## 🤝 Contributing
 

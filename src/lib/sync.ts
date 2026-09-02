@@ -4,11 +4,21 @@ import { supabase, syncConfigured } from "./supabase";
 import { useAuth } from "./auth";
 import { useStore } from "../store";
 
+type SyncRow = Record<string, unknown>;
+
+interface SyncTombstone extends SyncRow {
+  entity_type: "tasks" | "labels" | "task_labels" | "time_sessions" | "journal_entries";
+  entity_id: string;
+  deleted_at: string;
+}
+
 interface Bundle {
-  tasks: unknown[];
-  labels: unknown[];
-  task_labels: unknown[];
-  sessions: unknown[];
+  tasks: SyncRow[];
+  labels: SyncRow[];
+  task_labels: SyncRow[];
+  sessions: SyncRow[];
+  journal: SyncRow[];
+  tombstones: SyncTombstone[];
 }
 
 export type SyncStatus = "idle" | "syncing" | "error" | "offline";
@@ -67,11 +77,11 @@ export const useSync = create<SyncState>((set, get) => ({
 }));
 
 async function pull(since: string): Promise<Bundle> {
-  const fetchTable = async (table: string) => {
+  const fetchTable = async (table: string, watermarkColumn = "updated_at") => {
     const { data, error } = await supabase
       .from(table)
       .select("*")
-      .gt("updated_at", since);
+      .gt(watermarkColumn, since);
     if (error) throw new Error(error.message);
     return data ?? [];
   };
@@ -81,11 +91,13 @@ async function pull(since: string): Promise<Bundle> {
     tasks: await fetchTable("tasks"),
     task_labels: await fetchTable("task_labels"),
     sessions: await fetchTable("time_sessions"),
+    journal: await fetchTable("journal_entries"),
+    tombstones: (await fetchTable("sync_tombstones", "recorded_at")) as SyncTombstone[],
   };
 }
 
 async function push(local: Bundle): Promise<void> {
-  const upsert = async (table: string, rows: unknown[], onConflict?: string) => {
+  const upsert = async (table: string, rows: SyncRow[], onConflict?: string) => {
     if (!rows.length) return;
     const query = onConflict
       ? supabase.from(table).upsert(rows, { onConflict })
@@ -98,6 +110,50 @@ async function push(local: Bundle): Promise<void> {
   await upsert("tasks", local.tasks);
   await upsert("task_labels", local.task_labels, "task_id,label_id");
   await upsert("time_sessions", local.sessions);
+  await upsert("journal_entries", local.journal);
+
+  if (!local.tombstones.length) return;
+
+  // Persist the deletion marker before removing content. Markers are immutable:
+  // UUIDs are never reused, and keeping the first deletion is enough to stop a
+  // stale device from resurrecting the row.
+  const markerRows = local.tombstones.map(({ entity_type, entity_id, deleted_at }) => ({
+    entity_type,
+    entity_id,
+    deleted_at,
+  }));
+  const { error: markerError } = await supabase.from("sync_tombstones").upsert(markerRows, {
+    onConflict: "user_id,entity_type,entity_id",
+    ignoreDuplicates: true,
+    defaultToNull: false,
+  });
+  if (markerError) throw new Error(markerError.message);
+
+  const deleteIds = async (table: string, ids: string[]) => {
+    if (!ids.length) return;
+    const { error } = await supabase.from(table).delete().in("id", ids);
+    if (error) throw new Error(error.message);
+  };
+  const idsFor = (type: SyncTombstone["entity_type"]) =>
+    local.tombstones.filter((t) => t.entity_type === type).map((t) => t.entity_id);
+
+  // Children before parents. Task and label foreign keys also cascade, but the
+  // explicit order keeps retries deterministic and works for standalone child
+  // deletions too.
+  for (const key of idsFor("task_labels")) {
+    const [taskId, labelId] = key.split(":", 2);
+    if (!taskId || !labelId) throw new Error(`Invalid task-label tombstone: ${key}`);
+    const { error } = await supabase
+      .from("task_labels")
+      .delete()
+      .eq("task_id", taskId)
+      .eq("label_id", labelId);
+    if (error) throw new Error(error.message);
+  }
+  await deleteIds("time_sessions", idsFor("time_sessions"));
+  await deleteIds("journal_entries", idsFor("journal_entries"));
+  await deleteIds("tasks", idsFor("tasks"));
+  await deleteIds("labels", idsFor("labels"));
 }
 
 // --- Triggers ---------------------------------------------------------------
@@ -138,9 +194,14 @@ export function initSync() {
     }
   });
 
-  // A change to the task or label lists means a local edit worth pushing.
+  // A change to the task, label, or journal lists means a local edit to push.
   useStore.subscribe((state, prev) => {
-    if (state.tasks !== prev.tasks || state.labels !== prev.labels) scheduleSync();
+    if (
+      state.tasks !== prev.tasks ||
+      state.labels !== prev.labels ||
+      state.journal !== prev.journal
+    )
+      scheduleSync();
   });
 
   // If a session was already restored at launch, kick off the first round.

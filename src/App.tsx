@@ -11,15 +11,13 @@ import { applyTheme } from "./lib/theme";
 import { useKeyboard } from "./lib/useKeyboard";
 import type { ActiveReminder } from "./types";
 import { ContextMenu, type MenuItem } from "./components/ContextMenu";
-import { Sidebar } from "./components/Sidebar";
+import { DayRail, Sidebar } from "./components/Sidebar";
 import { TaskList } from "./components/TaskList";
-import { TaskDetail } from "./components/TaskDetail";
 import { ReminderToasts } from "./components/ReminderToasts";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { FocusWidget } from "./components/FocusWidget";
 import { ShortcutsOverlay } from "./components/ShortcutsOverlay";
 import { Celebration } from "./components/Celebration";
-import { ChevronLeftIcon, ChevronRightIcon } from "./components/Icons";
 
 export function App() {
   const load = useStore((s) => s.load);
@@ -29,12 +27,10 @@ export function App() {
   const pushReminder = useStore((s) => s.pushReminder);
   const theme = useStore((s) => s.theme);
   const tasks = useStore((s) => s.tasks);
-  const collapsed = useStore((s) => s.sidebarCollapsed);
-  const toggleSidebar = useStore((s) => s.toggleSidebar);
-  const selectedId = useStore((s) => s.selectedId);
-  const select = useStore((s) => s.select);
   const setView = useStore((s) => s.setView);
   const toggleTheme = useStore((s) => s.toggleTheme);
+  const sidebarCollapsed = useStore((s) => s.sidebarCollapsed);
+  const toggleSidebar = useStore((s) => s.toggleSidebar);
 
   const menuActions = (): MenuItem[] => [
     {
@@ -43,6 +39,15 @@ export function App() {
         setView({ kind: "today" });
         requestAnimationFrame(() =>
           document.getElementById("quick-add-input")?.focus(),
+        );
+      },
+    },
+    {
+      label: "New journal",
+      onClick: () => {
+        setView({ kind: "journal" });
+        requestAnimationFrame(() =>
+          document.getElementById("journal-add-input")?.focus(),
         );
       },
     },
@@ -102,38 +107,20 @@ export function App() {
   }, [tasks]);
 
   return (
-    <div class="relative flex h-full w-full overflow-hidden">
+    <div class="app-shell">
       <Sidebar />
-
-      {/* Collapse / expand toggle, sitting on the sidebar↔main seam */}
-      <button
-        onClick={toggleSidebar}
-        title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        style={{ left: `${(collapsed ? 56 : 256) - 11}px` }}
-        class="absolute top-4 z-30 grid h-[22px] w-[22px] place-items-center rounded-full border border-[var(--color-border-strong)] bg-[var(--color-elevated)] text-[var(--color-muted)] shadow-md shadow-black/20 transition-colors hover:text-[var(--color-text)]"
-      >
-        {collapsed ? (
-          <ChevronRightIcon width={14} height={14} />
-        ) : (
-          <ChevronLeftIcon width={14} height={14} />
+      <div class="app-workspace">
+        <DayRail />
+        {!sidebarCollapsed && (
+          <button
+            type="button"
+            class="day-rail-backdrop"
+            onClick={toggleSidebar}
+            aria-label="Close calendar navigation"
+          />
         )}
-      </button>
-
-      <TaskList />
-
-      {/* Click-away layer: while the detail panel is open, clicking anywhere
-          in the main area dismisses it. It sits above the list (z-30) but
-          below the panel (z-40), and starts to the right of the sidebar so
-          the sidebar stays interactive. */}
-      {selectedId != null && (
-        <div
-          onClick={() => select(null)}
-          style={{ left: `${collapsed ? 56 : 256}px` }}
-          class="absolute inset-y-0 right-0 z-30"
-        />
-      )}
-
-      <TaskDetail />
+        <TaskList />
+      </div>
       <FocusWidget />
       <ReminderToasts />
       <ConfirmDialog />

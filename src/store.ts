@@ -1,12 +1,21 @@
 import { create } from "zustand";
 import { api } from "./lib/api";
-import { combineDateTime, snoozeFrom, timeOf, toLocalDate, today } from "./lib/dates";
+import {
+  combineDateTime,
+  snoozeFrom,
+  timeOf,
+  toLocalDate,
+  today,
+} from "./lib/dates";
 import { sectionsForView } from "./lib/grouping";
 import { applyTheme, initialTheme, type Theme } from "./lib/theme";
 import type {
   ActiveReminder,
   ActiveTimer,
+  JournalEntry,
+  JournalPatch,
   Label,
+  NewJournalEntry,
   NewTask,
   Pomodoro,
   Task,
@@ -25,6 +34,7 @@ export interface ConfirmOptions {
 interface State {
   tasks: Task[];
   labels: Label[];
+  journal: JournalEntry[];
   view: ViewId;
   selectedId: string | null;
   loading: boolean;
@@ -74,6 +84,10 @@ interface State {
   editLabel: (id: string, name: string, color: string) => Promise<void>;
   removeLabel: (id: string) => Promise<void>;
 
+  addJournal: (input: NewJournalEntry) => Promise<JournalEntry>;
+  patchJournal: (patch: JournalPatch) => Promise<void>;
+  removeJournal: (id: string) => Promise<void>;
+
   loadTimers: () => Promise<void>;
   onTimersChanged: () => Promise<void>;
   toggleFocus: () => void;
@@ -95,13 +109,14 @@ interface State {
 export const useStore = create<State>((set, get) => ({
   tasks: [],
   labels: [],
+  journal: [],
   view: { kind: "today" },
   selectedId: null,
   loading: true,
   reminders: [],
   theme: initialTheme(),
   confirm: null,
-  sidebarCollapsed: localStorage.getItem("todofy-sidebar") === "collapsed",
+  sidebarCollapsed: true,
   searchQuery: "",
   filterLabelIds: [],
   filterPriorities: [],
@@ -116,11 +131,12 @@ export const useStore = create<State>((set, get) => ({
 
   load: async () => {
     set({ loading: true });
-    const [tasks, labels] = await Promise.all([
+    const [tasks, labels, journal] = await Promise.all([
       api.listTasks(),
       api.listLabels(),
+      api.listJournal(),
     ]);
-    set({ tasks: sortTasks(tasks), labels, loading: false });
+    set({ tasks: sortTasks(tasks), labels, journal, loading: false });
   },
 
   setView: (view) => set({ view, selectedId: null }),
@@ -149,7 +165,6 @@ export const useStore = create<State>((set, get) => ({
 
   toggleSidebar: () => {
     const sidebarCollapsed = !get().sidebarCollapsed;
-    localStorage.setItem("todofy-sidebar", sidebarCollapsed ? "collapsed" : "expanded");
     set({ sidebarCollapsed });
   },
 
@@ -269,7 +284,11 @@ export const useStore = create<State>((set, get) => ({
 
   addLabel: async (name, color) => {
     const label = await api.createLabel(name, color);
-    set({ labels: [...get().labels, label].sort((a, b) => a.name.localeCompare(b.name)) });
+    set({
+      labels: [...get().labels, label].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      ),
+    });
     return label;
   },
 
@@ -291,8 +310,31 @@ export const useStore = create<State>((set, get) => ({
         ...t,
         labelIds: t.labelIds.filter((lid) => lid !== id),
       })),
-      view: view.kind === "label" && view.labelId === id ? { kind: "today" } : view,
+      view:
+        view.kind === "label" && view.labelId === id ? { kind: "today" } : view,
     });
+  },
+
+  // --- Journal --------------------------------------------------------------
+
+  addJournal: async (input) => {
+    const entry = await api.createJournal(input);
+    set({ journal: sortJournal([entry, ...get().journal]) });
+    return entry;
+  },
+
+  patchJournal: async (patch) => {
+    const updated = await api.updateJournal(patch);
+    set({
+      journal: sortJournal(
+        get().journal.map((e) => (e.id === updated.id ? updated : e)),
+      ),
+    });
+  },
+
+  removeJournal: async (id) => {
+    await api.deleteJournal(id);
+    set({ journal: get().journal.filter((e) => e.id !== id) });
   },
 
   // --- Focus timers ---------------------------------------------------------
@@ -328,19 +370,31 @@ export const useStore = create<State>((set, get) => ({
   // after a session closes.
   startTaskTimer: async (id) => {
     const activeTimer = await api.startTimer(id);
-    set({ activeTimer, showFocus: true, tasks: sortTasks(await api.listTasks()) });
+    set({
+      activeTimer,
+      showFocus: true,
+      tasks: sortTasks(await api.listTasks()),
+    });
   },
   stopTaskTimer: async () => {
     await api.stopTimer();
     set({ activeTimer: null, tasks: sortTasks(await api.listTasks()) });
   },
 
-  pomodoroStart: async () => set({ pomodoro: await api.pomodoroStart(), showFocus: true }),
+  pomodoroStart: async () =>
+    set({ pomodoro: await api.pomodoroStart(), showFocus: true }),
   pomodoroPause: async () => set({ pomodoro: await api.pomodoroPause() }),
   pomodoroReset: async () => set({ pomodoro: await api.pomodoroReset() }),
   pomodoroNext: async () => set({ pomodoro: await api.pomodoroNext() }),
   setPomodoroConfig: async (focusMin, shortMin, longMin, longEvery) =>
-    set({ pomodoro: await api.setPomodoroConfig(focusMin, shortMin, longMin, longEvery) }),
+    set({
+      pomodoro: await api.setPomodoroConfig(
+        focusMin,
+        shortMin,
+        longMin,
+        longEvery,
+      ),
+    }),
 }));
 
 /**
@@ -354,6 +408,15 @@ function sortTasks(tasks: Task[]): Task[] {
       Number(a.status === "done") - Number(b.status === "done") ||
       a.orderIndex - b.orderIndex ||
       a.createdAt.localeCompare(b.createdAt),
+  );
+}
+
+/** Newest first: by entry date, then creation time. Mirrors `list_journal`. */
+function sortJournal(entries: JournalEntry[]): JournalEntry[] {
+  return [...entries].sort(
+    (a, b) =>
+      b.entryDate.localeCompare(a.entryDate) ||
+      b.createdAt.localeCompare(a.createdAt),
   );
 }
 
@@ -394,6 +457,8 @@ export function tasksForView(tasks: Task[], view: ViewId): Task[] {
       );
     case "upcoming":
       return tasks.filter((x) => x.dueDate && x.dueDate > t);
+    case "date":
+      return tasks.filter((x) => x.dueDate === view.date);
     case "pinned":
       return tasks.filter((x) => x.pinned);
     case "completed":
@@ -401,6 +466,7 @@ export function tasksForView(tasks: Task[], view: ViewId): Task[] {
     case "labels":
     case "settings":
     case "focus":
+    case "journal":
       return [];
     case "label":
       return tasks.filter((x) => x.labelIds.includes(view.labelId));

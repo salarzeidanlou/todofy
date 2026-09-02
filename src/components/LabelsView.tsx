@@ -16,15 +16,15 @@ export function LabelsView() {
   );
 
   return (
-    <main class="flex flex-1 flex-col overflow-hidden bg-[var(--color-bg)]">
-      <header class="shrink-0 px-8 pt-8 pb-4">
+    <main class="redesign-secondary labels-main flex flex-1 flex-col overflow-hidden bg-[var(--color-bg)]">
+      <header class="app-page-header shrink-0 px-8 pt-8 pb-4">
         <h2 class="text-2xl font-semibold tracking-tight">Labels</h2>
         <p class="mt-0.5 text-sm text-[var(--color-muted)]">
           Search, edit, and manage your labels
         </p>
       </header>
 
-      <div class="mx-auto flex w-full max-w-2xl items-center gap-2 px-8">
+      <div class="secondary-toolbar mx-auto flex w-full max-w-2xl items-center gap-2 px-8">
         <div class="relative flex-1">
           <SearchIcon
             width={15}
@@ -50,7 +50,7 @@ export function LabelsView() {
         </button>
       </div>
 
-      <div class="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-8 pt-4 pb-8">
+      <div class="secondary-scroll labels-content mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-8 pt-4 pb-8">
         {adding && (
           <div class="mb-3">
             <LabelForm

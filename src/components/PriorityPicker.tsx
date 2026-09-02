@@ -11,10 +11,11 @@ export const PRIORITIES: { value: 1 | 2 | 3 | 4; label: string; color: string }[
 interface Props {
   value: number;
   onChange: (value: number) => void;
+  placement?: "top" | "bottom";
 }
 
 /** Themed replacement for a native <select> — its popup can't be styled. */
-export function PriorityPicker({ value, onChange }: Props) {
+export function PriorityPicker({ value, onChange, placement = "bottom" }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const current = PRIORITIES.find((p) => p.value === value) ?? PRIORITIES[3];
@@ -41,7 +42,7 @@ export function PriorityPicker({ value, onChange }: Props) {
       </button>
 
       {open && (
-        <div class="absolute right-0 z-50 mt-1 w-40 animate-fade-rise rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-elevated)] p-1 shadow-xl shadow-black/40">
+        <div class={`absolute right-0 z-50 w-40 animate-fade-rise rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-elevated)] p-1 shadow-xl shadow-black/40 ${placement === "top" ? "bottom-full mb-2" : "top-full mt-1"}`}>
           {PRIORITIES.map((p) => (
             <button
               key={p.value}

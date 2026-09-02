@@ -80,6 +80,10 @@ export function sectionsForView(tasks: Task[], view: ViewId): Section[] {
     return [{ key: "all", title: null, tasks: pinnedFirst(sorted) }];
   }
 
+  if (view.kind === "date") {
+    return [{ key: view.date, title: null, tasks: pinnedFirst(tasks) }];
+  }
+
   // Inbox / label / pinned: no grouping.
   return [{ key: "all", title: null, tasks: pinnedFirst(tasks) }];
 }

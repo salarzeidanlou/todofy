@@ -26,6 +26,7 @@ const PRIORITY_COLOR: Record<number, string> = {
 /** Default due date so a new task lands in the view you're looking at. */
 function defaultDue(view: ViewId): string {
   if (view.kind === "today") return today();
+  if (view.kind === "date") return view.date;
   if (view.kind === "upcoming") return toLocalDate(new Date(Date.now() + 86400000));
   return "";
 }
@@ -84,23 +85,21 @@ export function QuickAdd() {
   return (
     <form
       onSubmit={submit}
-      class={`flex flex-col rounded-xl border bg-[var(--color-surface)] px-3 py-2.5 transition-colors ${
-        focused ? "border-[var(--color-accent)]" : "border-[var(--color-border)]"
-      }`}
+      class={`quick-add-composer ${focused ? "is-focused" : ""}`}
     >
-      <div class="flex items-center gap-2">
-        <PlusIcon width={18} height={18} class="text-[var(--color-faint)]" />
+      <div class="quick-add-main">
+        <PlusIcon width={22} height={22} />
         <input
           id="quick-add-input"
           value={title}
           onInput={(e) => setTitle(e.currentTarget.value)}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          placeholder="Add a task…  try “pay rent friday 5pm”"
-          class="flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--color-faint)]"
+          placeholder="Capture anything…  try “pay rent Friday 5pm”"
+          class="quick-add-input"
         />
-        <PriorityPicker value={priority} onChange={setPriority} />
-        <RepeatPicker value={repeat} onChange={setRepeat} />
+        <PriorityPicker value={priority} onChange={setPriority} placement="top" />
+        <RepeatPicker value={repeat} onChange={setRepeat} placement="top" />
         <DatePicker
           value={due || null}
           onChange={(v) => setDue(v ?? "")}
@@ -110,14 +109,14 @@ export function QuickAdd() {
         <button
           type="submit"
           disabled={!parsed.title.trim()}
-          class="rounded-lg bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[var(--color-accent-hover)] disabled:opacity-40"
+          class="quick-add-submit"
         >
           Add
         </button>
       </div>
 
       {hasChips && (
-        <div class="mt-2 flex flex-wrap items-center gap-1.5 pl-6">
+        <div class="quick-add-chips">
           {parsed.priority !== null && (
             <Chip color={PRIORITY_COLOR[parsed.priority]}>
               <FlagIcon width={11} height={11} />
