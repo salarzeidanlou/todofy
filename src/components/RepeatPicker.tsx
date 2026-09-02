@@ -8,10 +8,11 @@ interface Props {
   onChange: (value: RepeatRule | null) => void;
   /** Show the current rule's label next to the icon (used in compact rows). */
   showLabel?: boolean;
+  placement?: "top" | "bottom";
 }
 
 /** Themed recurrence dropdown — a native <select> popup can't be styled. */
-export function RepeatPicker({ value, onChange, showLabel = false }: Props) {
+export function RepeatPicker({ value, onChange, showLabel = false, placement = "bottom" }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -39,7 +40,7 @@ export function RepeatPicker({ value, onChange, showLabel = false }: Props) {
       </button>
 
       {open && (
-        <div class="absolute right-0 z-50 mt-1 w-44 animate-fade-rise rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-elevated)] p-1 shadow-xl shadow-black/40">
+        <div class={`absolute right-0 z-50 w-44 animate-fade-rise rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-elevated)] p-1 shadow-xl shadow-black/40 ${placement === "top" ? "bottom-full mb-2" : "top-full mt-1"}`}>
           {REPEAT_OPTIONS.map((opt) => (
             <button
               key={opt.value ?? "none"}

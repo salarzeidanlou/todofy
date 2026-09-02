@@ -36,7 +36,8 @@ export function QuickCapture() {
     parsed.repeat !== null ||
     parsed.labelNames.length > 0;
 
-  const focusInput = () => requestAnimationFrame(() => inputRef.current?.focus());
+  const focusInput = () =>
+    requestAnimationFrame(() => inputRef.current?.focus());
 
   const dismiss = async () => {
     setTitle("");
@@ -50,11 +51,13 @@ export function QuickCapture() {
 
     const finalTime = parsed.time;
     // A time or a recurrence needs a date to anchor to — default to today.
-    const finalDue = parsed.dueDate || (finalTime || parsed.repeat ? today() : null);
+    const finalDue =
+      parsed.dueDate || (finalTime || parsed.repeat ? today() : null);
 
     const task: NewTask = { title: finalTitle, priority: parsed.priority ?? 4 };
     if (finalDue) task.dueDate = finalDue;
-    if (finalDue && finalTime) task.remindAt = combineDateTime(finalDue, finalTime);
+    if (finalDue && finalTime)
+      task.remindAt = combineDateTime(finalDue, finalTime);
     if (parsed.repeat) task.repeat = parsed.repeat;
     if (parsed.labelIds.length) task.labelIds = parsed.labelIds;
 
@@ -68,7 +71,10 @@ export function QuickCapture() {
 
   useEffect(() => {
     // Labels are needed so `#tag` tokens resolve to real labels.
-    api.listLabels().then(setLabels).catch(() => {});
+    api
+      .listLabels()
+      .then(setLabels)
+      .catch(() => {});
 
     const win = getCurrentWindow();
     focusInput();
@@ -78,7 +84,10 @@ export function QuickCapture() {
     const unShow = win.listen("quick-show", () => {
       setTitle("");
       shownAt.current = Date.now();
-      api.listLabels().then(setLabels).catch(() => {});
+      api
+        .listLabels()
+        .then(setLabels)
+        .catch(() => {});
       focusInput();
     });
     // Focus the input as soon as the window actually gains OS-level focus —
@@ -102,13 +111,16 @@ export function QuickCapture() {
   }, []);
 
   return (
-    <div class="flex h-screen w-screen flex-col items-center justify-start p-2">
-      <form
-        onSubmit={submit}
-        class="w-full animate-fade-rise overflow-hidden rounded-2xl border border-[var(--color-border-strong)] bg-[var(--color-elevated)] shadow-2xl shadow-black/60"
-      >
-        <div class="flex items-center gap-3 px-4 py-3.5">
-          <Logo size={22} />
+    <div class="quick-capture-stage">
+      <form onSubmit={submit} class="quick-capture-card animate-fade-rise">
+        <header class="quick-capture-header">
+          <div>
+            <Logo size={20} />
+            <span>Quick capture</span>
+          </div>
+          <span>todofy</span>
+        </header>
+        <div class="quick-capture-input-row">
           <input
             ref={inputRef}
             value={title}
@@ -119,20 +131,23 @@ export function QuickCapture() {
                 dismiss();
               }
             }}
-            placeholder="Add a task…  “pay rent friday 5pm #home p1”"
-            class="min-w-0 flex-1 bg-transparent text-base outline-none focus-visible:outline-none placeholder:text-[var(--color-faint)]"
+            placeholder="What needs doing?  Try “pay rent Friday 5pm”"
+            class="quick-capture-input"
           />
-          <kbd class="shrink-0 rounded-md border border-[var(--color-border)] px-1.5 py-0.5 text-[10px] text-[var(--color-faint)]">
-            ↵
-          </kbd>
+          <button
+            type="submit"
+            disabled={!parsed.title.trim()}
+            class="quick-capture-submit"
+          >
+            Add task <kbd>↵</kbd>
+          </button>
         </div>
 
         {hasChips ? (
-          <div class="flex flex-wrap items-center gap-1.5 border-t border-[var(--color-border)] px-4 py-2.5">
+          <div class="quick-capture-footer">
             {parsed.priority !== null && (
               <Chip color={PRIORITY_COLOR[parsed.priority]}>
-                <FlagIcon width={11} height={11} />
-                P{parsed.priority}
+                <FlagIcon width={11} height={11} />P{parsed.priority}
               </Chip>
             )}
             {parsed.dueDate && (
@@ -157,16 +172,22 @@ export function QuickCapture() {
               const color = labels.find((l) => l.name === name)?.color;
               return (
                 <Chip key={name} color={color}>
-                  <span class="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+                  <span
+                    class="h-1.5 w-1.5 rounded-full"
+                    style={{ background: color }}
+                  />
                   {name}
                 </Chip>
               );
             })}
           </div>
         ) : (
-          <div class="border-t border-[var(--color-border)] px-4 py-2 text-[11px] text-[var(--color-faint)]">
-            Press <b class="font-semibold text-[var(--color-muted)]">Enter</b> to add ·{" "}
-            <b class="font-semibold text-[var(--color-muted)]">Esc</b> to dismiss
+          <div class="quick-capture-footer">
+            Add a date, time, <b>#label</b>, <b>p1</b>, or <b>every week</b> in
+            plain language
+            <span>
+              <kbd>Esc</kbd> dismiss
+            </span>
           </div>
         )}
       </form>
@@ -174,14 +195,23 @@ export function QuickCapture() {
   );
 }
 
-function Chip({ color, children }: { color?: string; children: ComponentChildren }) {
+function Chip({
+  color,
+  children,
+}: {
+  color?: string;
+  children: ComponentChildren;
+}) {
   return (
     <span
       class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
       style={
         color
           ? { background: color + "22", color }
-          : { background: "var(--color-accent-soft)", color: "var(--color-accent)" }
+          : {
+              background: "var(--color-accent-soft)",
+              color: "var(--color-accent)",
+            }
       }
     >
       {children}

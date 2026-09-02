@@ -89,6 +89,42 @@ pub struct TaskPatch {
     pub subtasks: Option<Vec<Subtask>>,
 }
 
+/// A free-form journal entry. Grouped by `entry_date` for the calendar rail.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct JournalEntry {
+    pub id: String,
+    pub title: Option<String>,
+    pub body: String,
+    pub mood: Option<i64>,
+    pub entry_date: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Payload for creating a journal entry. Only `entry_date` is required.
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct NewJournalEntry {
+    pub title: Option<String>,
+    pub body: Option<String>,
+    pub mood: Option<i64>,
+    pub entry_date: String,
+}
+
+/// Payload for updating a journal entry. `id` required; provided fields apply.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JournalPatch {
+    pub id: String,
+    #[serde(default, deserialize_with = "double_option")]
+    pub title: Option<Option<String>>,
+    pub body: Option<String>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub mood: Option<Option<i64>>,
+    pub entry_date: Option<String>,
+}
+
 /// The currently running per-task stopwatch, if any.
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]

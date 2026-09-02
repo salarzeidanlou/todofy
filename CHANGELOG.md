@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.8.0 — 2026-09-02
+
+### Added
+
+- **Journal** — a new top-level view for writing free-form entries. Each entry has an optional title, a body with **Markdown** support (rendered and sanitized), and an optional 1–5 **mood**. Write as many entries per day as you like; they group under day headings, newest first
+- **Day summary** — the composer offers a one-tap chip that inserts what you actually did that day (tasks completed and minutes focused), drawn from your tasks and focus history, as a low-friction writing prompt
+- **Calendar rail markers** — days that have a journal entry are now dotted in the week rail, so it doubles as a way to see which days you've written
+- **Journal shortcuts** — press `Shift`+`J` to jump into the Journal and start an entry; `n` now opens a new entry when you're already in the Journal (and a new task everywhere else). Both are listed in the `?` cheat-sheet
+- **New journal** — added to the app context menu, right under **New task**
+- **Journal account sync** — journal entries sync across devices on the same offline-first path as tasks: a per-user `journal_entries` table with row-level security, last-write-wins by `updated_at`, and deletion markers so removals propagate. Self-hosters apply the new journal and sync-tombstone migrations
+
+### Changed
+
+- **New design** — rebuilt the app as a calmer daily canvas with top navigation, a calendar-and-day rail, clearer task rows and detail views, and refreshed Focus, Settings, quick-capture, and notification surfaces
+
+### Fixed
+
+- Deleting a task, label, label assignment, focus session, or journal entry now records a content-free sync marker and physically removes the corresponding row from Supabase. Previously sync only uploaded `deleted_at`, leaving deleted content in the remote content table indefinitely
+
 ## v1.7.3 — 2026-08-28
 
 ### Fixed

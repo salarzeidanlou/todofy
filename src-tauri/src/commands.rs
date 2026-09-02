@@ -1,5 +1,5 @@
 use crate::db::{new_uuid, Db};
-use crate::models::{Label, NewTask, Task, TaskPatch};
+use crate::models::{JournalEntry, JournalPatch, Label, NewJournalEntry, NewTask, Task, TaskPatch};
 use crate::recur;
 use chrono::Local;
 use rusqlite::{params, Connection};
@@ -346,6 +346,117 @@ pub fn delete_label(db: State<Db>, id: String) -> CmdResult<()> {
     let now = now_iso();
     conn.execute(
         "UPDATE labels SET deleted_at = ?1, updated_at = ?1 WHERE id = ?2",
+        params![now, id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn load_journal(conn: &Connection, id: &str) -> rusqlite::Result<JournalEntry> {
+    conn.query_row(
+        "SELECT id, title, body, mood, entry_date, created_at, updated_at
+         FROM journal_entries WHERE id = ?1",
+        [id],
+        |r| {
+            Ok(JournalEntry {
+                id: r.get(0)?,
+                title: r.get(1)?,
+                body: r.get(2)?,
+                mood: r.get(3)?,
+                entry_date: r.get(4)?,
+                created_at: r.get(5)?,
+                updated_at: r.get(6)?,
+            })
+        },
+    )
+}
+
+#[tauri::command]
+pub fn list_journal(db: State<Db>) -> CmdResult<Vec<JournalEntry>> {
+    let conn = db.conn();
+    let mut stmt = conn
+        .prepare(
+            "SELECT id FROM journal_entries
+             WHERE deleted_at IS NULL
+             ORDER BY entry_date DESC, created_at DESC",
+        )
+        .map_err(|e| e.to_string())?;
+    let ids: Vec<String> = stmt
+        .query_map([], |r| r.get(0))
+        .map_err(|e| e.to_string())?
+        .collect::<rusqlite::Result<_>>()
+        .map_err(|e| e.to_string())?;
+    ids.into_iter()
+        .map(|id| load_journal(&conn, &id).map_err(|e| e.to_string()))
+        .collect()
+}
+
+#[tauri::command]
+pub fn create_journal(db: State<Db>, entry: NewJournalEntry) -> CmdResult<JournalEntry> {
+    let conn = db.conn();
+    let now = now_iso();
+    let id = new_uuid();
+    conn.execute(
+        "INSERT INTO journal_entries (id, title, body, mood, entry_date, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+        params![
+            id,
+            entry.title,
+            entry.body.unwrap_or_default(),
+            entry.mood,
+            entry.entry_date,
+            now,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    load_journal(&conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn update_journal(db: State<Db>, patch: JournalPatch) -> CmdResult<JournalEntry> {
+    let conn = db.conn();
+    if let Some(title) = &patch.title {
+        conn.execute(
+            "UPDATE journal_entries SET title = ?1 WHERE id = ?2",
+            params![title, patch.id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    if let Some(body) = &patch.body {
+        conn.execute(
+            "UPDATE journal_entries SET body = ?1 WHERE id = ?2",
+            params![body, patch.id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    if let Some(mood) = &patch.mood {
+        conn.execute(
+            "UPDATE journal_entries SET mood = ?1 WHERE id = ?2",
+            params![mood, patch.id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    if let Some(date) = &patch.entry_date {
+        conn.execute(
+            "UPDATE journal_entries SET entry_date = ?1 WHERE id = ?2",
+            params![date, patch.id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    conn.execute(
+        "UPDATE journal_entries SET updated_at = ?1 WHERE id = ?2",
+        params![now_iso(), patch.id],
+    )
+    .map_err(|e| e.to_string())?;
+    load_journal(&conn, &patch.id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_journal(db: State<Db>, id: String) -> CmdResult<()> {
+    let conn = db.conn();
+    let now = now_iso();
+    conn.execute(
+        "UPDATE journal_entries SET deleted_at = ?1, updated_at = ?1 WHERE id = ?2",
         params![now, id],
     )
     .map_err(|e| e.to_string())?;

@@ -1,6 +1,7 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { getVersion } from "@tauri-apps/api/app";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { api } from "../lib/api";
 import { useStore } from "../store";
 import { AccountSection } from "./AccountSection";
@@ -8,10 +9,20 @@ import {
   BellIcon,
   BoltIcon,
   CheckCircleIcon,
+  ExternalLinkIcon,
+  GitHubIcon,
   MoonIcon,
   PowerIcon,
   SunIcon,
+  WebsiteIcon,
 } from "./Icons";
+
+const WEBSITE_URL = "https://unifybrowse.com/";
+const GITHUB_URL = "https://github.com/salarzeidanlou/todofy";
+
+const openExternal = (url: string) => {
+  openUrl(url).catch(() => {});
+};
 
 type StartupMode = "window" | "tray";
 type Corner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
@@ -64,7 +75,9 @@ export function SettingsView() {
         setNotifPosition(position as Corner);
       setReady(true);
     })();
-    getVersion().then(setVersion).catch(() => {});
+    getVersion()
+      .then(setVersion)
+      .catch(() => {});
   }, []);
 
   const toggleAutostart = async () => {
@@ -90,7 +103,10 @@ export function SettingsView() {
     const next = !desktopNotifications;
     setDesktopNotifications(next); // optimistic
     try {
-      await api.setSetting("desktop_notifications_enabled", next ? "true" : "false");
+      await api.setSetting(
+        "desktop_notifications_enabled",
+        next ? "true" : "false",
+      );
     } catch {
       setDesktopNotifications(!next); // revert on failure
     }
@@ -132,15 +148,15 @@ export function SettingsView() {
   };
 
   return (
-    <main class="flex flex-1 flex-col overflow-hidden bg-[var(--color-bg)]">
-      <header class="shrink-0 px-8 pt-8 pb-4">
+    <main class="redesign-secondary settings-main flex flex-1 flex-col overflow-hidden bg-[var(--color-bg)]">
+      <header class="app-page-header shrink-0 px-8 pt-8 pb-4">
         <h2 class="text-2xl font-semibold tracking-tight">Settings</h2>
         <p class="mt-0.5 text-sm text-[var(--color-muted)]">
           Startup, appearance, and about
         </p>
       </header>
 
-      <div class="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-8 pt-2 pb-8">
+      <div class="secondary-scroll settings-content mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-8 pt-2 pb-8">
         <AccountSection />
 
         {/* Startup */}
@@ -150,7 +166,11 @@ export function SettingsView() {
             title="Run todofy on startup"
             desc="Launch automatically when you sign in to your computer."
           >
-            <Switch checked={autostart} onChange={toggleAutostart} disabled={!ready} />
+            <Switch
+              checked={autostart}
+              onChange={toggleAutostart}
+              disabled={!ready}
+            />
           </Row>
 
           {autostart && (
@@ -318,7 +338,32 @@ export function SettingsView() {
 
         {/* About */}
         <Section title="About">
-          <Row title="Version" desc="You're running the latest installed build.">
+          <Row
+            icon={<WebsiteIcon width={18} height={18} />}
+            title="Todofy website"
+            desc="News, downloads, and more from UnifyBrowse."
+          >
+            <ExternalButton
+              label="Visit website"
+              onClick={() => openExternal(WEBSITE_URL)}
+            />
+          </Row>
+          <div class="border-t border-[var(--color-border)]" />
+          <Row
+            icon={<GitHubIcon width={18} height={18} />}
+            title="GitHub repository"
+            desc="Explore the source, report an issue, or contribute."
+          >
+            <ExternalButton
+              label="Open GitHub"
+              onClick={() => openExternal(GITHUB_URL)}
+            />
+          </Row>
+          <div class="border-t border-[var(--color-border)]" />
+          <Row
+            title="Version"
+            desc="You're running the latest installed build."
+          >
             <span class="rounded-full bg-[var(--color-surface-2)] px-2 py-0.5 text-xs font-medium text-[var(--color-muted)]">
               {version ? `v${version}` : "—"}
             </span>
@@ -326,6 +371,24 @@ export function SettingsView() {
         </Section>
       </div>
     </main>
+  );
+}
+
+function ExternalButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
+    >
+      {label}
+      <ExternalLinkIcon width={13} height={13} />
+    </button>
   );
 }
 

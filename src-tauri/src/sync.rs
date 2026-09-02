@@ -63,18 +63,43 @@ pub struct SyncSession {
     pub deleted_at: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SyncJournal {
+    pub id: String,
+    pub title: Option<String>,
+    pub body: String,
+    pub mood: Option<i64>,
+    pub entry_date: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub deleted_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SyncTombstone {
+    pub entity_type: String,
+    pub entity_id: String,
+    pub deleted_at: String,
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct SyncBundle {
     pub tasks: Vec<SyncTask>,
     pub labels: Vec<SyncLabel>,
     pub task_labels: Vec<SyncTaskLabel>,
     pub sessions: Vec<SyncSession>,
+    pub journal: Vec<SyncJournal>,
+    #[serde(default)]
+    pub tombstones: Vec<SyncTombstone>,
 }
 
 /// True when `a` is strictly newer than `b`. If either fails to parse we treat
 /// `a` as newer, so a questionable row propagates rather than being dropped.
 fn newer(a: &str, b: &str) -> bool {
-    match (DateTime::parse_from_rfc3339(a), DateTime::parse_from_rfc3339(b)) {
+    match (
+        DateTime::parse_from_rfc3339(a),
+        DateTime::parse_from_rfc3339(b),
+    ) {
         (Ok(a), Ok(b)) => a > b,
         _ => true,
     }
@@ -87,8 +112,9 @@ fn subtasks_value(raw: Option<String>) -> Value {
 
 // ------------------------------------------------------------------- push side
 
-/// Every local row changed since `since` (tombstones included), for the caller
-/// to upsert into Supabase.
+/// Every live local row changed since `since`, plus content-free deletion
+/// markers. The caller upserts live rows, records the markers, then hard-deletes
+/// their matching remote content rows.
 #[tauri::command]
 pub fn sync_changes_since(db: State<Db>, since: String) -> Result<SyncBundle, String> {
     let conn = db.conn();
@@ -97,6 +123,7 @@ pub fn sync_changes_since(db: State<Db>, since: String) -> Result<SyncBundle, St
 
 fn collect_changes(conn: &Connection, since: &str) -> rusqlite::Result<SyncBundle> {
     let mut tasks = Vec::new();
+    let mut tombstones = Vec::new();
     let mut stmt = conn.prepare(
         "SELECT id, title, notes, due_date, remind_at, status, priority, created_at,
                 completed_at, order_index, pinned, repeat, subtasks, updated_at, deleted_at
@@ -124,7 +151,15 @@ fn collect_changes(conn: &Connection, since: &str) -> rusqlite::Result<SyncBundl
     for row in rows {
         let row = row?;
         if newer(&row.updated_at, since) {
-            tasks.push(row);
+            if let Some(deleted_at) = row.deleted_at.clone() {
+                tombstones.push(SyncTombstone {
+                    entity_type: "tasks".into(),
+                    entity_id: row.id,
+                    deleted_at,
+                });
+            } else {
+                tasks.push(row);
+            }
         }
     }
 
@@ -142,7 +177,15 @@ fn collect_changes(conn: &Connection, since: &str) -> rusqlite::Result<SyncBundl
     for row in rows {
         let row = row?;
         if newer(&row.updated_at, since) {
-            labels.push(row);
+            if let Some(deleted_at) = row.deleted_at.clone() {
+                tombstones.push(SyncTombstone {
+                    entity_type: "labels".into(),
+                    entity_id: row.id,
+                    deleted_at,
+                });
+            } else {
+                labels.push(row);
+            }
         }
     }
 
@@ -160,7 +203,15 @@ fn collect_changes(conn: &Connection, since: &str) -> rusqlite::Result<SyncBundl
     for row in rows {
         let row = row?;
         if newer(&row.updated_at, since) {
-            task_labels.push(row);
+            if let Some(deleted_at) = row.deleted_at.clone() {
+                tombstones.push(SyncTombstone {
+                    entity_type: "task_labels".into(),
+                    entity_id: format!("{}:{}", row.task_id, row.label_id),
+                    deleted_at,
+                });
+            } else {
+                task_labels.push(row);
+            }
         }
     }
 
@@ -182,7 +233,47 @@ fn collect_changes(conn: &Connection, since: &str) -> rusqlite::Result<SyncBundl
     for row in rows {
         let row = row?;
         if newer(&row.updated_at, since) {
-            sessions.push(row);
+            if let Some(deleted_at) = row.deleted_at.clone() {
+                tombstones.push(SyncTombstone {
+                    entity_type: "time_sessions".into(),
+                    entity_id: row.id,
+                    deleted_at,
+                });
+            } else {
+                sessions.push(row);
+            }
+        }
+    }
+
+    let mut journal = Vec::new();
+    let mut stmt = conn.prepare(
+        "SELECT id, title, body, mood, entry_date, created_at, updated_at, deleted_at
+         FROM journal_entries",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok(SyncJournal {
+            id: r.get(0)?,
+            title: r.get(1)?,
+            body: r.get(2)?,
+            mood: r.get(3)?,
+            entry_date: r.get(4)?,
+            created_at: r.get(5)?,
+            updated_at: r.get(6)?,
+            deleted_at: r.get(7)?,
+        })
+    })?;
+    for row in rows {
+        let row = row?;
+        if newer(&row.updated_at, since) {
+            if let Some(deleted_at) = row.deleted_at.clone() {
+                tombstones.push(SyncTombstone {
+                    entity_type: "journal_entries".into(),
+                    entity_id: row.id,
+                    deleted_at,
+                });
+            } else {
+                journal.push(row);
+            }
         }
     }
 
@@ -208,12 +299,28 @@ fn collect_changes(conn: &Connection, since: &str) -> rusqlite::Result<SyncBundl
     drop((have_task, have_label));
     for id in need_labels {
         if let Some(row) = fetch_label(conn, &id)? {
-            labels.push(row);
+            if let Some(deleted_at) = row.deleted_at.clone() {
+                tombstones.push(SyncTombstone {
+                    entity_type: "labels".into(),
+                    entity_id: row.id,
+                    deleted_at,
+                });
+            } else {
+                labels.push(row);
+            }
         }
     }
     for id in need_tasks {
         if let Some(row) = fetch_task(conn, &id)? {
-            tasks.push(row);
+            if let Some(deleted_at) = row.deleted_at.clone() {
+                tombstones.push(SyncTombstone {
+                    entity_type: "tasks".into(),
+                    entity_id: row.id,
+                    deleted_at,
+                });
+            } else {
+                tasks.push(row);
+            }
         }
     }
 
@@ -222,6 +329,8 @@ fn collect_changes(conn: &Connection, since: &str) -> rusqlite::Result<SyncBundl
         labels,
         task_labels,
         sessions,
+        journal,
+        tombstones,
     })
 }
 
@@ -288,8 +397,16 @@ fn local_updated_at(conn: &Connection, sql: &str, key: &[&dyn rusqlite::ToSql]) 
 
 fn apply_bundle(conn: &Connection, remote: &SyncBundle) -> rusqlite::Result<()> {
     for l in &remote.labels {
-        let local = local_updated_at(conn, "SELECT updated_at FROM labels WHERE id = ?1", &[&l.id]);
-        if local.as_deref().map(|cur| newer(&l.updated_at, cur)).unwrap_or(true) {
+        let local = local_updated_at(
+            conn,
+            "SELECT updated_at FROM labels WHERE id = ?1",
+            &[&l.id],
+        );
+        if local
+            .as_deref()
+            .map(|cur| newer(&l.updated_at, cur))
+            .unwrap_or(true)
+        {
             conn.execute(
                 "INSERT INTO labels (id, name, color, updated_at, deleted_at)
                  VALUES (?1, ?2, ?3, ?4, ?5)
@@ -303,7 +420,11 @@ fn apply_bundle(conn: &Connection, remote: &SyncBundle) -> rusqlite::Result<()> 
 
     for t in &remote.tasks {
         let local = local_updated_at(conn, "SELECT updated_at FROM tasks WHERE id = ?1", &[&t.id]);
-        if local.as_deref().map(|cur| newer(&t.updated_at, cur)).unwrap_or(true) {
+        if local
+            .as_deref()
+            .map(|cur| newer(&t.updated_at, cur))
+            .unwrap_or(true)
+        {
             conn.execute(
                 "INSERT INTO tasks (id, title, notes, due_date, remind_at, status, priority,
                                     created_at, completed_at, order_index, pinned, repeat,
@@ -343,7 +464,11 @@ fn apply_bundle(conn: &Connection, remote: &SyncBundle) -> rusqlite::Result<()> 
             "SELECT updated_at FROM task_labels WHERE task_id = ?1 AND label_id = ?2",
             &[&tl.task_id, &tl.label_id],
         );
-        if local.as_deref().map(|cur| newer(&tl.updated_at, cur)).unwrap_or(true) {
+        if local
+            .as_deref()
+            .map(|cur| newer(&tl.updated_at, cur))
+            .unwrap_or(true)
+        {
             conn.execute(
                 "INSERT INTO task_labels (task_id, label_id, updated_at, deleted_at)
                  VALUES (?1, ?2, ?3, ?4)
@@ -355,9 +480,16 @@ fn apply_bundle(conn: &Connection, remote: &SyncBundle) -> rusqlite::Result<()> 
     }
 
     for s in &remote.sessions {
-        let local =
-            local_updated_at(conn, "SELECT updated_at FROM time_sessions WHERE id = ?1", &[&s.id]);
-        if local.as_deref().map(|cur| newer(&s.updated_at, cur)).unwrap_or(true) {
+        let local = local_updated_at(
+            conn,
+            "SELECT updated_at FROM time_sessions WHERE id = ?1",
+            &[&s.id],
+        );
+        if local
+            .as_deref()
+            .map(|cur| newer(&s.updated_at, cur))
+            .unwrap_or(true)
+        {
             conn.execute(
                 "INSERT INTO time_sessions (id, task_id, start_at, end_at, seconds, notified,
                                             updated_at, deleted_at)
@@ -366,12 +498,118 @@ fn apply_bundle(conn: &Connection, remote: &SyncBundle) -> rusqlite::Result<()> 
                     task_id = excluded.task_id, start_at = excluded.start_at,
                     end_at = excluded.end_at, seconds = excluded.seconds,
                     updated_at = excluded.updated_at, deleted_at = excluded.deleted_at",
-                params![s.id, s.task_id, s.start_at, s.end_at, s.seconds, s.updated_at, s.deleted_at],
+                params![
+                    s.id,
+                    s.task_id,
+                    s.start_at,
+                    s.end_at,
+                    s.seconds,
+                    s.updated_at,
+                    s.deleted_at
+                ],
             )?;
         }
     }
 
+    for j in &remote.journal {
+        let local = local_updated_at(
+            conn,
+            "SELECT updated_at FROM journal_entries WHERE id = ?1",
+            &[&j.id],
+        );
+        if local
+            .as_deref()
+            .map(|cur| newer(&j.updated_at, cur))
+            .unwrap_or(true)
+        {
+            conn.execute(
+                "INSERT INTO journal_entries (id, title, body, mood, entry_date,
+                                              created_at, updated_at, deleted_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                 ON CONFLICT(id) DO UPDATE SET
+                    title = excluded.title, body = excluded.body, mood = excluded.mood,
+                    entry_date = excluded.entry_date, updated_at = excluded.updated_at,
+                    deleted_at = excluded.deleted_at",
+                params![
+                    j.id,
+                    j.title,
+                    j.body,
+                    j.mood,
+                    j.entry_date,
+                    j.created_at,
+                    j.updated_at,
+                    j.deleted_at,
+                ],
+            )?;
+        }
+    }
+
+    // Content rows are applied first, then deletion markers win according to
+    // the same timestamp ordering. A marker never needs the deleted content in
+    // order to propagate across devices.
+    for tombstone in &remote.tombstones {
+        apply_tombstone(conn, tombstone)?;
+    }
+
     Ok(())
+}
+
+fn apply_id_tombstone(
+    conn: &Connection,
+    table: &str,
+    id: &str,
+    deleted_at: &str,
+) -> rusqlite::Result<()> {
+    let local = local_updated_at(
+        conn,
+        &format!("SELECT updated_at FROM {table} WHERE id = ?1"),
+        &[&id],
+    );
+    if local
+        .as_deref()
+        .map(|current| newer(deleted_at, current))
+        .unwrap_or(false)
+    {
+        conn.execute(
+            &format!("UPDATE {table} SET deleted_at = ?1, updated_at = ?1 WHERE id = ?2"),
+            params![deleted_at, id],
+        )?;
+    }
+    Ok(())
+}
+
+fn apply_tombstone(conn: &Connection, tombstone: &SyncTombstone) -> rusqlite::Result<()> {
+    match tombstone.entity_type.as_str() {
+        "tasks" | "labels" | "time_sessions" | "journal_entries" => apply_id_tombstone(
+            conn,
+            &tombstone.entity_type,
+            &tombstone.entity_id,
+            &tombstone.deleted_at,
+        ),
+        "task_labels" => {
+            let Some((task_id, label_id)) = tombstone.entity_id.split_once(':') else {
+                return Ok(());
+            };
+            let local = local_updated_at(
+                conn,
+                "SELECT updated_at FROM task_labels WHERE task_id = ?1 AND label_id = ?2",
+                &[&task_id, &label_id],
+            );
+            if local
+                .as_deref()
+                .map(|current| newer(&tombstone.deleted_at, current))
+                .unwrap_or(false)
+            {
+                conn.execute(
+                    "UPDATE task_labels SET deleted_at = ?1, updated_at = ?1
+                     WHERE task_id = ?2 AND label_id = ?3",
+                    params![tombstone.deleted_at, task_id, label_id],
+                )?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
 }
 
 // ------------------------------------------------------------------- watermark
@@ -405,7 +643,13 @@ pub fn sync_purge_tombstones(db: State<Db>, days: i64) -> Result<(), String> {
 fn purge_tombstones(conn: &Connection, days: i64) -> rusqlite::Result<()> {
     let cutoff = chrono::Utc::now() - chrono::Duration::days(days.max(0));
     // Children before parents; deleting a task also cascades any leftovers.
-    for table in ["task_labels", "time_sessions", "tasks", "labels"] {
+    for table in [
+        "task_labels",
+        "time_sessions",
+        "tasks",
+        "labels",
+        "journal_entries",
+    ] {
         let mut stmt = conn.prepare(&format!(
             "SELECT rowid, deleted_at FROM {table} WHERE deleted_at IS NOT NULL"
         ))?;
@@ -471,6 +715,8 @@ mod tests {
                 deleted_at: None,
             }],
             sessions: vec![],
+            journal: vec![],
+            tombstones: vec![],
         };
         apply_bundle(&conn, &bundle).unwrap();
 
@@ -521,6 +767,62 @@ mod tests {
     }
 
     #[test]
+    fn journal_applies_lww_and_ships_tombstones() {
+        let conn = setup();
+        let bundle = SyncBundle {
+            journal: vec![SyncJournal {
+                id: "j1".into(),
+                title: Some("morning".into()),
+                body: "woke up early".into(),
+                mood: Some(4),
+                entry_date: "2026-05-01".into(),
+                created_at: "2026-05-01T08:00:00+00:00".into(),
+                updated_at: "2026-05-01T08:00:00+00:00".into(),
+                deleted_at: None,
+            }],
+            ..Default::default()
+        };
+        apply_bundle(&conn, &bundle).unwrap();
+
+        // A newer edit wins; an older one is ignored.
+        let newer_edit = SyncBundle {
+            journal: vec![SyncJournal {
+                id: "j1".into(),
+                title: Some("morning".into()),
+                body: "edited".into(),
+                mood: Some(5),
+                entry_date: "2026-05-01".into(),
+                created_at: "2026-05-01T08:00:00+00:00".into(),
+                updated_at: "2026-05-02T08:00:00+00:00".into(),
+                deleted_at: None,
+            }],
+            ..Default::default()
+        };
+        apply_bundle(&conn, &newer_edit).unwrap();
+        let body: String = conn
+            .query_row(
+                "SELECT body FROM journal_entries WHERE id = 'j1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(body, "edited");
+
+        // A content-free marker above the watermark ships, while the journal
+        // body itself is no longer included in the remote upsert bundle.
+        conn.execute(
+            "UPDATE journal_entries SET deleted_at = ?1, updated_at = ?1 WHERE id = 'j1'",
+            ["2026-06-01T00:00:00+00:00"],
+        )
+        .unwrap();
+        let changed = collect_changes(&conn, "2026-05-15T00:00:00+00:00").unwrap();
+        assert!(changed.journal.is_empty());
+        assert_eq!(changed.tombstones.len(), 1);
+        assert_eq!(changed.tombstones[0].entity_type, "journal_entries");
+        assert_eq!(changed.tombstones[0].entity_id, "j1");
+    }
+
+    #[test]
     fn changes_since_respects_watermark_and_tombstones() {
         let conn = setup();
         conn.execute(
@@ -532,10 +834,41 @@ mod tests {
         .unwrap();
 
         let bundle = collect_changes(&conn, "2026-01-01T00:00:00+00:00").unwrap();
-        assert_eq!(bundle.labels.len(), 1);
-        assert_eq!(bundle.labels[0].id, "new");
-        // The tombstone travels so the deletion can propagate.
-        assert!(bundle.labels[0].deleted_at.is_some());
+        assert!(bundle.labels.is_empty());
+        assert_eq!(bundle.tombstones.len(), 1);
+        assert_eq!(bundle.tombstones[0].entity_type, "labels");
+        assert_eq!(bundle.tombstones[0].entity_id, "new");
+    }
+
+    #[test]
+    fn remote_tombstone_soft_deletes_local_content() {
+        let conn = setup();
+        conn.execute(
+            "INSERT INTO tasks (id, title, created_at, updated_at)
+             VALUES ('t1', 'private content', ?1, ?1)",
+            ["2026-01-01T00:00:00+00:00"],
+        )
+        .unwrap();
+
+        apply_bundle(
+            &conn,
+            &SyncBundle {
+                tombstones: vec![SyncTombstone {
+                    entity_type: "tasks".into(),
+                    entity_id: "t1".into(),
+                    deleted_at: "2026-02-01T00:00:00+00:00".into(),
+                }],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let deleted_at: Option<String> = conn
+            .query_row("SELECT deleted_at FROM tasks WHERE id = 't1'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(deleted_at.as_deref(), Some("2026-02-01T00:00:00+00:00"));
     }
 
     #[test]
@@ -564,8 +897,22 @@ mod tests {
         // must its parents, even though they weren't touched, or the push would
         // trip the foreign key.
         assert_eq!(bundle.task_labels.len(), 1);
-        assert_eq!(bundle.labels.iter().map(|l| l.id.as_str()).collect::<Vec<_>>(), ["l1"]);
-        assert_eq!(bundle.tasks.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["t1"]);
+        assert_eq!(
+            bundle
+                .labels
+                .iter()
+                .map(|l| l.id.as_str())
+                .collect::<Vec<_>>(),
+            ["l1"]
+        );
+        assert_eq!(
+            bundle
+                .tasks
+                .iter()
+                .map(|t| t.id.as_str())
+                .collect::<Vec<_>>(),
+            ["t1"]
+        );
     }
 
     #[test]

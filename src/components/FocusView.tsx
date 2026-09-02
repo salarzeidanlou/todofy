@@ -52,41 +52,44 @@ export function FocusView() {
   const overtime = remaining < 0;
 
   return (
-    <main class="flex flex-1 flex-col overflow-hidden bg-[var(--color-bg)]">
-      <header class="shrink-0 px-8 pt-8 pb-4">
+    <main class="redesign-secondary focus-main flex flex-1 flex-col overflow-hidden bg-[var(--color-bg)]">
+      <header class="app-page-header shrink-0 px-8 pt-8 pb-4">
         <h2 class="text-2xl font-semibold tracking-tight">Focus</h2>
         <p class="mt-0.5 text-sm text-[var(--color-muted)]">
           Run a Pomodoro, tune its lengths, and review your focus history
         </p>
       </header>
 
-      <div class="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-8 pt-2 pb-8">
-        {/* Pomodoro */}
+      <div class="secondary-scroll focus-content mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-8 pt-2 pb-8">
         {p && (
-          <section class="mb-6 flex flex-col items-center gap-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-6 py-8">
-            <span
-              class={`rounded-full px-3 py-1 text-xs font-medium ${
+          <section class="focus-timer-panel mb-6 flex flex-col items-center gap-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-6 py-8">
+            <div class="focus-panel-topline">
+              <span
+                class={`focus-phase ${
                 p.phase === "focus"
                   ? "bg-[var(--color-accent-soft)] text-[var(--color-accent)]"
                   : "bg-[var(--color-surface-2)] text-[var(--color-success)]"
               }`}
-            >
-              {PHASE_LABEL[p.phase]}
-            </span>
+              >
+                <TimerIcon width={14} height={14} />
+                {PHASE_LABEL[p.phase]} session
+              </span>
+              <span>Round {p.completedFocus % p.longEvery + 1} of {p.longEvery}</span>
+            </div>
 
             <span
-              class={`font-mono text-6xl font-semibold tabular-nums ${
+              class={`focus-clock ${
                 overtime ? "text-[var(--color-warning)]" : "text-[var(--color-text)]"
               }`}
             >
               {clock(remaining)}
             </span>
 
-            <p class="text-xs text-[var(--color-faint)]">
-              {p.completedFocus} focus session{p.completedFocus === 1 ? "" : "s"} completed
+            <p class="focus-prompt">
+              Pick one outcome. Everything else can wait until the timer ends.
             </p>
 
-            <div class="flex items-center gap-3">
+            <div class="focus-controls">
               <button
                 onClick={pomodoroReset}
                 title="Reset phase"
@@ -113,16 +116,20 @@ export function FocusView() {
                 <SkipIcon width={18} height={18} />
               </button>
             </div>
+
+            <div class="focus-session-progress">
+              <span style={{ width: `${Math.min(100, Math.max(4, (elapsed / Math.max(1, p.target)) * 100))}%` }} />
+            </div>
           </section>
         )}
 
-        {/* Settings */}
         {p && (
-          <section class="mb-6">
-            <h3 class="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-[var(--color-faint)]">
-              Pomodoro lengths
-            </h3>
-            <div class="grid grid-cols-2 gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-4 sm:grid-cols-4">
+          <aside class="focus-side-panel">
+            <div class="focus-side-heading">
+              <p>Session plan</p>
+              <span>Adjust the rhythm to match your energy.</span>
+            </div>
+            <div class="focus-length-grid">
               <NumberField
                 label="Focus"
                 value={p.focusMin}
@@ -144,11 +151,17 @@ export function FocusView() {
                 onCommit={(v) => setPomodoroConfig(p.focusMin, p.shortMin, p.longMin, v)}
               />
             </div>
-          </section>
+            <div class="focus-rhythm-note">
+              <span>Next</span>
+              <strong>{p.phase === "focus" ? "Short recovery" : "Focus session"}</strong>
+              <small>{p.phase === "focus" ? `${p.shortMin} minutes away` : `${p.focusMin} minutes`}</small>
+            </div>
+          </aside>
         )}
 
-        {/* History */}
-        <History sessions={history} />
+        <div class="focus-history-panel">
+          <History sessions={history} />
+        </div>
       </div>
     </main>
   );

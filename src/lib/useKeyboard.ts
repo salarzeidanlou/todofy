@@ -75,7 +75,18 @@ export function useKeyboard() {
           break;
         case "n":
           e.preventDefault();
-          focusById("quick-add-input");
+          // In the journal, "n" starts a new entry; elsewhere, a new task.
+          if (s.view.kind === "journal") {
+            focusById("journal-add-input");
+          } else {
+            focusById("quick-add-input");
+          }
+          break;
+        case "J":
+          // Shift+J jumps to the journal and focuses the composer.
+          e.preventDefault();
+          s.setView({ kind: "journal" });
+          requestAnimationFrame(() => focusById("journal-add-input"));
           break;
         case "j":
         case "ArrowDown":

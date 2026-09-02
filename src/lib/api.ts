@@ -1,7 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   ActiveTimer,
+  JournalEntry,
+  JournalPatch,
   Label,
+  NewJournalEntry,
   NewTask,
   Pomodoro,
   SessionLog,
@@ -25,6 +28,13 @@ export const api = {
   updateLabel: (id: string, name: string, color: string) =>
     invoke<Label>("update_label", { id, name, color }),
   deleteLabel: (id: string) => invoke<void>("delete_label", { id }),
+
+  listJournal: () => invoke<JournalEntry[]>("list_journal"),
+  createJournal: (entry: NewJournalEntry) =>
+    invoke<JournalEntry>("create_journal", { entry }),
+  updateJournal: (patch: JournalPatch) =>
+    invoke<JournalEntry>("update_journal", { patch }),
+  deleteJournal: (id: string) => invoke<void>("delete_journal", { id }),
 
   getSetting: (key: string) => invoke<string | null>("get_setting", { key }),
   setSetting: (key: string, value: string) =>

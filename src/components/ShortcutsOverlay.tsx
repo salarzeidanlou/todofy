@@ -8,11 +8,12 @@ const NAVIGATION: Shortcut[] = [
   { keys: ["J"], desc: "Next task" },
   { keys: ["K"], desc: "Previous task" },
   { keys: ["↑", "↓"], desc: "Move selection" },
+  { keys: ["Shift", "J"], desc: "Open Journal" },
   { keys: ["Esc"], desc: "Close panel / this help" },
 ];
 
 const ACTIONS: Shortcut[] = [
-  { keys: ["N"], desc: "New task (focus quick-add)" },
+  { keys: ["N"], desc: "New task / journal entry (focus composer)" },
   { keys: ["E"], desc: "Edit selected task" },
   { keys: ["C"], desc: "Complete / un-complete selected" },
   { keys: ["P"], desc: "Pin / unpin selected" },

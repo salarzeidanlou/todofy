@@ -17,8 +17,7 @@ export const supabase = createClient(url || "http://localhost", anonKey || "anon
     detectSessionInUrl: false,
     storage: secureStorage,
   },
-  // Which Postgres schema the tables live in. Self-host uses the default
-  // `public` (the simple single-app migration); a build can override it via
-  // VITE_SUPABASE_SCHEMA to point at an app-specific schema in a shared project.
+  // Open-source deployments use `public` by default. A private deployment can
+  // select an app-specific schema through its uncommitted local environment.
   db: { schema: import.meta.env.VITE_SUPABASE_SCHEMA || "public" },
 });
