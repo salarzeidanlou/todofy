@@ -184,6 +184,7 @@ Sync is **off by default** — todofy is local‑first and works fully offline w
    ```
 
    This creates the five per‑user content tables in the default `public` schema, plus a content-free `sync_tombstones` deletion log. All tables use row-level security, so signed-in users can only access their own rows. Deleted content is physically removed after its marker is safely recorded, allowing other devices to learn the deletion without retaining task or journal text.
+
 3. **Point todofy at your project.** Copy the env template and fill in your project's URL and publishable key — both are safe to ship in a client; row‑level security is what actually protects the data:
 
    ```bash
@@ -191,6 +192,7 @@ Sync is **off by default** — todofy is local‑first and works fully offline w
    # VITE_SUPABASE_URL=https://<your-project-ref>.supabase.co
    # VITE_SUPABASE_PUBLISHABLE_KEY=<your-publishable-key>
    ```
+
 4. **Build** as above, then open **Settings → Account** in the app and sign up — sync turns on from there.
 
 ### Regenerate the app icon
@@ -265,6 +267,16 @@ described in the [LICENSE](LICENSE).
 Source-available: you may view the code and contribute to it, but it may not be
 used, copied, or redistributed on its own without prior written permission. See
 the [LICENSE](LICENSE) for the full terms.
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=salarzeidanlou%2Ftodofy&type=date&logscale=&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=salarzeidanlou/todofy&type=date&theme=dark&logscale&legend=top-left&sealed_token=0Cn2nzTB3h-9RgX6PWZvpuO764C-D8R1Z38Z-x3C30atIwGeGFC1hXz1WQ0gMmYmZr5bTOz4dHTDKjH125TE3U4rvFE8I09_iqo_6xTrUTVLcKvK7bw4tw31btK-h51gNQzlM2VTvWRMsb4VTHpYwVxNe8l2sn6eP9NI8LuwjMUGFnT3AH2pHt9XhcBa" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=salarzeidanlou/todofy&type=date&logscale&legend=top-left&sealed_token=0Cn2nzTB3h-9RgX6PWZvpuO764C-D8R1Z38Z-x3C30atIwGeGFC1hXz1WQ0gMmYmZr5bTOz4dHTDKjH125TE3U4rvFE8I09_iqo_6xTrUTVLcKvK7bw4tw31btK-h51gNQzlM2VTvWRMsb4VTHpYwVxNe8l2sn6eP9NI8LuwjMUGFnT3AH2pHt9XhcBa" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=salarzeidanlou/todofy&type=date&logscale&legend=top-left&sealed_token=0Cn2nzTB3h-9RgX6PWZvpuO764C-D8R1Z38Z-x3C30atIwGeGFC1hXz1WQ0gMmYmZr5bTOz4dHTDKjH125TE3U4rvFE8I09_iqo_6xTrUTVLcKvK7bw4tw31btK-h51gNQzlM2VTvWRMsb4VTHpYwVxNe8l2sn6eP9NI8LuwjMUGFnT3AH2pHt9XhcBa" />
+ </picture>
+</a>
 
 ---
 
