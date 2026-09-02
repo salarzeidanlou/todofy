@@ -46,8 +46,8 @@ Smart lists, labels, recurring tasks, focus timers, and reminders that actually 
 - 🌗 **Light & dark themes** — dark by default, remembers your choice
 - ⌨️ **Keyboard‑first** — add, navigate, complete, and edit without touching the mouse
 - 🪟 **System tray** — closes to tray and keeps running so reminders never miss; start/pause the Pomodoro, stop the task timer, and watch the live countdown right from the tray
-- 🧭 **Collapsible sidebar** — go full or minimal
-- ☁️ **Optional account sync** — sign in with an email and password to sync your tasks, labels, and focus history across devices (backed by Supabase, with row‑level security). Sessions are kept in your OS secret store, and the whole thing is opt‑in
+- 🧭 **Date-oriented navigation** — move between smart views from the top navigation bar and use the day rail to jump through your schedule
+- ☁️ **Optional account sync** — sign in with an email and password to sync your tasks, labels, focus history, and journal across devices (backed by Supabase, with row‑level security). Sessions are kept in your OS secret store, and the whole thing is opt‑in
 - 💾 **Local‑first** — everything is stored in a local SQLite database and works fully offline; sync is additive, and with no account there's no cloud and no tracking
 
 ## 📸 Screenshots
@@ -88,20 +88,20 @@ Grab a package from the [Releases](../../releases) page, or build it yourself (s
 **AppImage** — portable, runs on any distro:
 
 ```bash
-chmod +x todofy_1.7.3_amd64.AppImage
-./todofy_1.7.3_amd64.AppImage
+chmod +x todofy_1.8.0_amd64.AppImage
+./todofy_1.8.0_amd64.AppImage
 ```
 
 **Debian / Ubuntu:**
 
 ```bash
-sudo dpkg -i todofy_1.7.3_amd64.deb
+sudo dpkg -i todofy_1.8.0_amd64.deb
 ```
 
 **Fedora / RHEL / openSUSE:**
 
 ```bash
-sudo rpm -i todofy-1.7.3-1.x86_64.rpm
+sudo rpm -i todofy-1.8.0-1.x86_64.rpm
 ```
 
 **macOS** — open the `.dmg` and drag todofy into Applications. It's not
@@ -109,15 +109,15 @@ notarized yet, so on first launch right‑click the app and choose **Open** to
 get past Gatekeeper:
 
 ```
-todofy_1.7.3_x64.dmg      # Intel
-todofy_1.7.3_aarch64.dmg  # Apple Silicon
+todofy_1.8.0_x64.dmg      # Intel
+todofy_1.8.0_aarch64.dmg  # Apple Silicon
 ```
 
 **Windows** — run the installer:
 
 ```
-todofy_1.7.3_x64-setup.exe   # NSIS installer
-todofy_1.7.3_x64_en-US.msi   # or the MSI
+todofy_1.8.0_x64-setup.exe   # NSIS installer
+todofy_1.8.0_x64_en-US.msi   # or the MSI
 ```
 
 > Your tasks live in the app's data directory — `~/.local/share/com.unifybrowse.todofy/`
@@ -173,7 +173,7 @@ Bundles are written to `src-tauri/target/release/bundle/` (`.deb`, `.rpm`, and `
 
 ### Optional: self‑host account sync
 
-Sync is **off by default** — todofy is local‑first and works fully offline without it. To run your own sync backend so your tasks, labels, and focus history follow you across devices (with nothing going through anyone else's server):
+Sync is **off by default** — todofy is local‑first and works fully offline without it. To run your own sync backend so your tasks, labels, focus history, and journal follow you across devices (with nothing going through anyone else's server):
 
 1. **Create a Supabase project** — the free tier is plenty — at [supabase.com](https://supabase.com), or use any Postgres you control. Make sure **Email** auth is enabled (it is by default).
 2. **Apply the schema.** Open the project's **SQL Editor** and run the migrations in order — [`20260826120000_sync_schema.sql`](supabase/migrations/20260826120000_sync_schema.sql), [`20260902000000_journal.sql`](supabase/migrations/20260902000000_journal.sql), then [`20260902133603_sync_tombstones.sql`](supabase/migrations/20260902133603_sync_tombstones.sql) — or use the [Supabase CLI](https://supabase.com/docs/guides/cli):
