@@ -632,6 +632,26 @@ pub fn sync_reset(db: State<Db>) -> Result<(), String> {
     settings::write(&db.conn(), WATERMARK_KEY, EPOCH).map_err(|e| e.to_string())
 }
 
+/// Clears user-created local data when a user deletes their account and opts in.
+#[tauri::command]
+pub fn wipe_local_data(db: State<Db>) -> Result<(), String> {
+    wipe_local_data_inner(&db.conn()).map_err(|e| e.to_string())
+}
+
+fn wipe_local_data_inner(conn: &Connection) -> rusqlite::Result<()> {
+    for table in [
+        "events",
+        "task_labels",
+        "time_sessions",
+        "tasks",
+        "labels",
+        "journal_entries",
+    ] {
+        conn.execute(&format!("DELETE FROM {table}"), [])?;
+    }
+    settings::write(conn, WATERMARK_KEY, EPOCH)
+}
+
 /// Hard-delete tombstones whose `deleted_at` is older than `days`. By then the
 /// deletion has long since propagated, so keeping the row only wastes space.
 /// Compared as parsed instants against a cutoff, so mixed offsets are fine.
@@ -913,6 +933,37 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["t1"]
         );
+    }
+
+    #[test]
+    fn wipe_removes_standalone_calendar_events_too() {
+        let conn = setup();
+        conn.execute_batch(
+            "INSERT INTO labels (id, name, color, updated_at)
+                 VALUES ('l1', 'home', '#111', '2026-01-01T00:00:00+00:00');
+             INSERT INTO tasks (id, title, created_at, updated_at)
+                 VALUES ('t1', 'task', '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00');
+             INSERT INTO journal_entries
+                 (id, body, entry_date, created_at, updated_at)
+                 VALUES ('j1', 'note', '2026-01-01', '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00');
+             INSERT INTO events
+                 (id, title, start_at, all_day, created_at, updated_at)
+                 VALUES ('e1', 'private event', '2026-01-01', 1,
+                         '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00');",
+        )
+        .unwrap();
+
+        wipe_local_data_inner(&conn).unwrap();
+
+        for table in ["events", "tasks", "labels", "journal_entries"] {
+            let count: i64 = conn
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            assert_eq!(count, 0, "{table} was not wiped");
+        }
+        assert_eq!(settings::read(&conn, WATERMARK_KEY).as_deref(), Some(EPOCH));
     }
 
     #[test]

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "todofy",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "identifier": "com.unifybrowse.todofy",
   "build": {
     "beforeDevCommand": "bun run dev",
@@ -50,7 +50,14 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost https://*.supabase.co wss://*.supabase.co; font-src 'self'"
+      "csp": "default-src 'self'; img-src 'self' data: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost https://*.supabase.co wss://*.supabase.co https://oauth2.googleapis.com https://www.googleapis.com; font-src 'self'"
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["todofy"]
+      }
     }
   },
   "bundle": {

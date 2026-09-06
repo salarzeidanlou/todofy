@@ -4,6 +4,7 @@ import { useStore } from "../store";
 import type { ViewId } from "../types";
 import { toLocalDate, today } from "../lib/dates";
 import {
+  CalendarIcon,
   CheckCircleIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -25,6 +26,7 @@ const NAV: { id: ViewId; label: string; Icon: typeof InboxIcon }[] = [
   { id: { kind: "inbox" }, label: "Inbox", Icon: InboxIcon },
   { id: { kind: "pinned" }, label: "Pinboard", Icon: PinIcon },
   { id: { kind: "completed" }, label: "Completed", Icon: CheckCircleIcon },
+  { id: { kind: "calendar" }, label: "Calendar", Icon: CalendarIcon },
   { id: { kind: "labels" }, label: "Labels", Icon: LabelIcon },
   { id: { kind: "journal" }, label: "Journal", Icon: JournalIcon },
 ];
@@ -83,6 +85,7 @@ export function Sidebar() {
               type="button"
               onClick={() => navigate(id)}
               class={`top-nav-item ${active ? "is-active" : ""}`}
+              aria-label={label}
               aria-current={active ? "page" : undefined}
               title={label}
             >
@@ -98,7 +101,9 @@ export function Sidebar() {
           type="button"
           onClick={() => navigate({ kind: "focus" })}
           class={`top-nav-item top-focus ${view.kind === "focus" ? "is-active" : ""}`}
+          aria-label="Focus"
           aria-current={view.kind === "focus" ? "page" : undefined}
+          title="Focus"
         >
           <TimerIcon width={20} height={20} />
           <span>Focus</span>
@@ -107,7 +112,9 @@ export function Sidebar() {
           type="button"
           onClick={() => navigate({ kind: "settings" })}
           class={`top-nav-item top-settings ${view.kind === "settings" ? "is-active" : ""}`}
+          aria-label="Settings"
           aria-current={view.kind === "settings" ? "page" : undefined}
+          title="Settings"
         >
           <SettingsIcon width={20} height={20} />
           <span>Settings</span>

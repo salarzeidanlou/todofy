@@ -104,7 +104,10 @@ fn hide(app: &AppHandle) {
 /// `notify-show` event was emitted.
 #[tauri::command]
 pub fn notify_popup_pending() -> Option<PopupPayload> {
-    LAST_PAYLOAD.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    LAST_PAYLOAD
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
 }
 
 /// Top-left corner (physical px) for the popup on the current monitor.

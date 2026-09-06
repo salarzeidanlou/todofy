@@ -2,13 +2,20 @@ import { useEffect, useState } from "preact/hooks";
 import { useAuth } from "../lib/auth";
 import { useSync, type SyncStatus } from "../lib/sync";
 import { syncConfigured } from "../lib/supabase";
-import { CloseIcon, EyeIcon, EyeOffIcon, UserIcon } from "./Icons";
+import { CloseIcon, EyeIcon, EyeOffIcon, GoogleIcon, TrashIcon, UserIcon } from "./Icons";
+import { Checkbox } from "./Checkbox";
 
 type Mode = "signin" | "signup";
 
 export function AccountSection() {
-  const { ready, session, email, signIn, signUp, signOut } = useAuth();
+  const { ready, session, email, signIn, signUp, signInWithGoogle, signOut, deleteAccount } =
+    useAuth();
   const [modalOpen, setModalOpen] = useState(false);
+
+  // Google sign-in lands a session asynchronously, so close the modal on it.
+  useEffect(() => {
+    if (session) setModalOpen(false);
+  }, [session]);
 
   // Builds without a configured Supabase project ship with sync disabled.
   if (!syncConfigured) {
@@ -35,7 +42,7 @@ export function AccountSection() {
         {!ready ? (
           <div class="px-4 py-3.5 text-sm text-[var(--color-muted)]">Loading…</div>
         ) : session ? (
-          <SignedInRow email={email} onSignOut={signOut} />
+          <SignedInRow email={email} onSignOut={signOut} deleteAccount={deleteAccount} />
         ) : (
           <SignInRow onSignIn={() => setModalOpen(true)} />
         )}
@@ -45,6 +52,7 @@ export function AccountSection() {
         <AuthModal
           signIn={signIn}
           signUp={signUp}
+          signInWithGoogle={signInWithGoogle}
           onClose={() => setModalOpen(false)}
         />
       )}
@@ -79,11 +87,14 @@ function SignInRow({ onSignIn }: { onSignIn: () => void }) {
 function SignedInRow({
   email,
   onSignOut,
+  deleteAccount,
 }: {
   email: string | null;
   onSignOut: () => Promise<void>;
+  deleteAccount: (wipeLocal: boolean) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const [busy, setBusy] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   return (
     <>
       <div class="flex items-center gap-3 px-4 py-3.5">
@@ -114,6 +125,23 @@ function SignedInRow({
         </button>
       </div>
       <SyncStatusRow />
+      <div class="flex items-center justify-between gap-3 border-t border-[var(--color-border)] px-4 py-3">
+        <p class="text-xs text-[var(--color-muted)]">
+          Permanently delete your account and cloud data.
+        </p>
+        <button
+          onClick={() => setDeleteOpen(true)}
+          class="shrink-0 rounded-lg border border-[var(--color-danger)]/40 px-3 py-1.5 text-xs font-medium text-[var(--color-danger)] transition-colors hover:bg-[var(--color-danger)]/10"
+        >
+          Delete account
+        </button>
+      </div>
+      {deleteOpen && (
+        <DeleteAccountModal
+          deleteAccount={deleteAccount}
+          onClose={() => setDeleteOpen(false)}
+        />
+      )}
     </>
   );
 }
@@ -168,13 +196,133 @@ function relativeTime(iso: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+function DeleteAccountModal({
+  deleteAccount,
+  onClose,
+}: {
+  deleteAccount: (wipeLocal: boolean) => Promise<{ ok: boolean; error?: string }>;
+  onClose: () => void;
+}) {
+  const [wipeLocal, setWipeLocal] = useState(false);
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const canDelete = confirm.trim().toUpperCase() === "DELETE";
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !busy) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, busy]);
+
+  const run = async () => {
+    if (!canDelete || busy) return;
+    setError(null);
+    setBusy(true);
+    const result = await deleteAccount(wipeLocal);
+    if (!result.ok) {
+      setError(result.error ?? "Could not delete your account.");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      class="fixed inset-0 z-[100] grid place-items-center bg-black/50 p-4 backdrop-blur-sm"
+      onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}
+    >
+      <div class="relative w-full max-w-sm animate-fade-rise overflow-hidden rounded-2xl border border-[var(--color-border-strong)] bg-[var(--color-elevated)] shadow-2xl shadow-black/50">
+        <div class="flex flex-col items-center gap-2 px-6 pt-8 pb-2 text-center">
+          <span class="grid h-12 w-12 place-items-center rounded-2xl bg-[var(--color-danger)]/10 text-[var(--color-danger)]">
+            <TrashIcon width={24} height={24} />
+          </span>
+          <h3 class="text-lg font-semibold text-[var(--color-text)]">Delete account</h3>
+          <p class="text-xs text-[var(--color-muted)]">
+            This permanently deletes your account and all cloud data. This can't
+            be undone.
+          </p>
+        </div>
+
+        <div class="flex flex-col gap-3 px-6 pt-3 pb-6">
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={wipeLocal}
+            onClick={() => setWipeLocal((v) => !v)}
+            class={`flex w-full items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
+              wipeLocal
+                ? "border-[var(--color-danger)]/50 bg-[var(--color-danger)]/5"
+                : "border-[var(--color-border)] bg-[var(--color-bg)] hover:bg-[var(--color-surface-2)]"
+            }`}
+          >
+            <span class="mt-0.5">
+              <Checkbox checked={wipeLocal} interactive={false} color="var(--color-danger)" />
+            </span>
+            <span class="text-xs text-[var(--color-text)]">
+              Also delete app data stored on this device.
+              <span class="mt-0.5 block text-[var(--color-muted)]">
+                Leave unchecked to keep your local tasks, journal, and calendar events.
+              </span>
+            </span>
+          </button>
+
+          <label class="flex flex-col gap-1 text-left">
+            <span class="text-[10px] font-medium uppercase tracking-wider text-[var(--color-faint)]">
+              Type{" "}
+              <code class="rounded border border-[var(--color-border)] bg-[var(--color-surface-2)] px-1.5 py-0.5 font-mono text-[11px] normal-case tracking-normal text-[var(--color-danger)]">
+                DELETE
+              </code>{" "}
+              to confirm
+            </span>
+            <input
+              value={confirm}
+              placeholder="DELETE"
+              onInput={(e) => setConfirm(e.currentTarget.value)}
+              class="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm outline-none transition-colors focus:border-[var(--color-danger)]"
+            />
+          </label>
+
+          {error && (
+            <p class="rounded-lg bg-[var(--color-danger)]/10 px-3 py-2 text-xs text-[var(--color-danger)]">
+              {error}
+            </p>
+          )}
+
+          <div class="mt-1 flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={busy}
+              class="flex-1 rounded-lg border border-[var(--color-border)] px-3 py-2.5 text-sm font-medium text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)] disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={run}
+              disabled={!canDelete || busy}
+              class="flex-1 rounded-lg bg-[var(--color-danger)] px-3 py-2.5 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
+            >
+              {busy ? "Deleting…" : "Delete account"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AuthModal({
   signIn,
   signUp,
+  signInWithGoogle,
   onClose,
 }: {
   signIn: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   signUp: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  signInWithGoogle: () => Promise<{ ok: boolean; error?: string }>;
   onClose: () => void;
 }) {
   const [mode, setMode] = useState<Mode>("signin");
@@ -182,6 +330,18 @@ function AuthModal({
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
+
+  const google = async () => {
+    if (googleBusy) return;
+    setError(null);
+    setGoogleBusy(true);
+    const result = await signInWithGoogle();
+    if (!result.ok) {
+      setError(result.error ?? "Could not start Google sign-in.");
+      setGoogleBusy(false);
+    }
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -234,6 +394,25 @@ function AuthModal({
               ? "Sync your tasks across all your devices."
               : "Sign in to sync your tasks across devices."}
           </p>
+        </div>
+
+        <div class="flex flex-col gap-3 px-6 pt-4">
+          <button
+            type="button"
+            onClick={google}
+            disabled={googleBusy}
+            class="flex items-center justify-center gap-2.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2.5 text-sm font-medium text-[var(--color-text)] transition-colors hover:bg-[var(--color-surface-2)] disabled:opacity-50"
+          >
+            <GoogleIcon width={18} height={18} />
+            {googleBusy ? "Waiting for browser…" : "Continue with Google"}
+          </button>
+          <div class="flex items-center gap-3">
+            <span class="h-px flex-1 bg-[var(--color-border)]" />
+            <span class="text-[10px] font-medium uppercase tracking-wider text-[var(--color-faint)]">
+              or
+            </span>
+            <span class="h-px flex-1 bg-[var(--color-border)]" />
+          </div>
         </div>
 
         <form onSubmit={submit} class="flex flex-col gap-3 px-6 pt-3 pb-6">

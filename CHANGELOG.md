@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.9.0 — 2026-09-06
+
+### Added
+
+- **Sign in with Google** — sign in or sign up with your Google account straight from the Account modal, alongside the existing email and password. Authentication opens in your system browser and returns to the app through a `todofy://` deep link, so it works the same as any native desktop sign‑in. Self‑hosters enable it by adding a Google OAuth provider in Supabase (see the README)
+- **Delete your account** — a new option in **Settings → Account** permanently deletes your account and all of its cloud data, with a clear type‑to‑confirm step and an optional checkbox to also wipe the copy stored on this device. Deleting the account cascades to every synced table, so nothing is left behind. Self‑hosters deploy the new `delete-account` edge function
+- **Local calendar** — a new Calendar workspace brings month, week, and day views to todofy. Tasks appear on their due dates, and standalone all-day or timed events can be created, edited, and deleted directly in the calendar. Standalone events stay private to this device and are not included in account sync or pushed to Google
+- **Google Calendar sync** — connect Google Calendar in **Settings → Calendar** to push your tasks one‑way to a dedicated **todofy** calendar, so dated tasks show up next to your meetings. Tasks with a due date become all‑day events and tasks with a reminder become timed events; recurring tasks move as they roll forward, and deleting or un‑dating a task removes its event. By default completing a task clears its event, with a toggle to keep finished tasks (marked with a ✓) and another to push only tasks that have a set time. Disconnecting can optionally delete the todofy calendar and its events. Sign‑in uses Google's desktop loopback flow with PKCE and the narrow `calendar.app.created` scope, so todofy only ever touches the calendar it creates; tokens live in your OS secret store. It's opt‑in and gated behind account sign‑in. Self‑hosters enable the Google Calendar API and add a **Desktop app** OAuth client (see the README)
+
 ## v1.8.0 — 2026-09-02
 
 ### Added

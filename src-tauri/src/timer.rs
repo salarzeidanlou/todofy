@@ -38,8 +38,7 @@ const MAX_SESSION_SECS: i64 = 12 * 3600;
 /// `MAX_SESSION_SECS`, capping its recorded duration at that limit.
 fn close_stale_sessions(conn: &Connection) -> rusqlite::Result<()> {
     let now = now_iso();
-    let mut stmt =
-        conn.prepare("SELECT id, start_at FROM time_sessions WHERE end_at IS NULL")?;
+    let mut stmt = conn.prepare("SELECT id, start_at FROM time_sessions WHERE end_at IS NULL")?;
     let rows: Vec<(String, String)> = stmt
         .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
         .collect::<rusqlite::Result<_>>()?;

@@ -12,9 +12,12 @@ import { applyTheme, initialTheme, type Theme } from "./lib/theme";
 import type {
   ActiveReminder,
   ActiveTimer,
+  Event,
+  EventPatch,
   JournalEntry,
   JournalPatch,
   Label,
+  NewEvent,
   NewJournalEntry,
   NewTask,
   Pomodoro,
@@ -35,6 +38,7 @@ interface State {
   tasks: Task[];
   labels: Label[];
   journal: JournalEntry[];
+  events: Event[];
   view: ViewId;
   selectedId: string | null;
   loading: boolean;
@@ -88,6 +92,10 @@ interface State {
   patchJournal: (patch: JournalPatch) => Promise<void>;
   removeJournal: (id: string) => Promise<void>;
 
+  addEvent: (input: NewEvent) => Promise<Event>;
+  patchEvent: (patch: EventPatch) => Promise<void>;
+  removeEvent: (id: string) => Promise<void>;
+
   loadTimers: () => Promise<void>;
   onTimersChanged: () => Promise<void>;
   toggleFocus: () => void;
@@ -110,6 +118,7 @@ export const useStore = create<State>((set, get) => ({
   tasks: [],
   labels: [],
   journal: [],
+  events: [],
   view: { kind: "today" },
   selectedId: null,
   loading: true,
@@ -131,12 +140,19 @@ export const useStore = create<State>((set, get) => ({
 
   load: async () => {
     set({ loading: true });
-    const [tasks, labels, journal] = await Promise.all([
+    const [tasks, labels, journal, events] = await Promise.all([
       api.listTasks(),
       api.listLabels(),
       api.listJournal(),
+      api.listEvents(),
     ]);
-    set({ tasks: sortTasks(tasks), labels, journal, loading: false });
+    set({
+      tasks: sortTasks(tasks),
+      labels,
+      journal,
+      events: sortEvents(events),
+      loading: false,
+    });
   },
 
   setView: (view) => set({ view, selectedId: null }),
@@ -337,6 +353,28 @@ export const useStore = create<State>((set, get) => ({
     set({ journal: get().journal.filter((e) => e.id !== id) });
   },
 
+  // --- Calendar events ------------------------------------------------------
+
+  addEvent: async (input) => {
+    const event = await api.createEvent(input);
+    set({ events: sortEvents([...get().events, event]) });
+    return event;
+  },
+
+  patchEvent: async (patch) => {
+    const updated = await api.updateEvent(patch);
+    set({
+      events: sortEvents(
+        get().events.map((e) => (e.id === updated.id ? updated : e)),
+      ),
+    });
+  },
+
+  removeEvent: async (id) => {
+    await api.deleteEvent(id);
+    set({ events: get().events.filter((e) => e.id !== id) });
+  },
+
   // --- Focus timers ---------------------------------------------------------
 
   loadTimers: async () => {
@@ -420,6 +458,19 @@ function sortJournal(entries: JournalEntry[]): JournalEntry[] {
   );
 }
 
+function sortEvents(events: Event[]): Event[] {
+  return [...events].sort(
+    (a, b) =>
+      (a.startAt ?? "￿").localeCompare(b.startAt ?? "￿") ||
+      a.title.localeCompare(b.title),
+  );
+}
+
+export function eventDate(event: Event): string | null {
+  if (!event.startAt) return null;
+  return event.allDay ? event.startAt.slice(0, 10) : toLocalDate(new Date(event.startAt));
+}
+
 export function applySearchAndFilters(
   tasks: Task[],
   searchQuery: string,
@@ -463,6 +514,8 @@ export function tasksForView(tasks: Task[], view: ViewId): Task[] {
       return tasks.filter((x) => x.pinned);
     case "completed":
       return tasks.filter((x) => x.status === "done");
+    case "calendar":
+      return tasks.filter((x) => x.dueDate);
     case "labels":
     case "settings":
     case "focus":

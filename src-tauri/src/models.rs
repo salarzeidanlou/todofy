@@ -125,6 +125,44 @@ pub struct JournalPatch {
     pub entry_date: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Event {
+    pub id: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub start_at: Option<String>,
+    pub end_at: Option<String>,
+    pub all_day: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct NewEvent {
+    pub title: String,
+    pub description: Option<String>,
+    pub start_at: Option<String>,
+    pub end_at: Option<String>,
+    #[serde(default)]
+    pub all_day: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventPatch {
+    pub id: String,
+    pub title: Option<String>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub description: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub start_at: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub end_at: Option<Option<String>>,
+    pub all_day: Option<bool>,
+}
+
 /// The currently running per-task stopwatch, if any.
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]

@@ -122,6 +122,34 @@ pub fn init(conn: &Connection) -> rusqlite::Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_journal_date ON journal_entries(entry_date);
 
+        -- Google Calendar push links: one row per task that has an event on the
+        -- dedicated todofy calendar. Device-local, never synced to Supabase.
+        -- `pushed_updated_at` is the task's updated_at at the last successful
+        -- push; `deleted_at` marks a link whose remote event still needs
+        -- removing (task un-dated, completed, or deleted).
+        CREATE TABLE IF NOT EXISTS calendar_links (
+            task_id              TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
+            external_event_id    TEXT NOT NULL,
+            external_calendar_id TEXT NOT NULL,
+            pushed_updated_at    TEXT NOT NULL,
+            deleted_at           TEXT
+        );
+
+        -- Standalone local calendar events, shown alongside tasks. These remain
+        -- device-local and are not part of Supabase or Google Calendar sync.
+        CREATE TABLE IF NOT EXISTS events (
+            id                 TEXT PRIMARY KEY,   -- UUID, generated on-device
+            title              TEXT NOT NULL,
+            description        TEXT,
+            start_at           TEXT,               -- ISO datetime, or YYYY-MM-DD when all_day
+            end_at             TEXT,
+            all_day            INTEGER NOT NULL DEFAULT 0,
+            created_at         TEXT NOT NULL,
+            updated_at         TEXT NOT NULL,       -- RFC3339, bumped on every write
+            deleted_at         TEXT                 -- soft-delete tombstone; NULL while live
+        );
+        CREATE INDEX IF NOT EXISTS idx_events_start ON events(start_at);
+
         CREATE INDEX IF NOT EXISTS idx_tasks_status   ON tasks(status);
         CREATE INDEX IF NOT EXISTS idx_tasks_due      ON tasks(due_date);
         CREATE INDEX IF NOT EXISTS idx_tasks_remind   ON tasks(remind_at);
@@ -213,6 +241,46 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
             CREATE INDEX idx_journal_date ON journal_entries(entry_date);
             ",
         )?;
+    }
+
+    // Google Calendar push links (one-way task -> event). Device-local, never
+    // synced; runs after the tasks table exists so the foreign key is valid.
+    if !table_exists(conn, "calendar_links") {
+        conn.execute(
+            "CREATE TABLE calendar_links (
+                task_id              TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
+                external_event_id    TEXT NOT NULL,
+                external_calendar_id TEXT NOT NULL,
+                pushed_updated_at    TEXT NOT NULL,
+                deleted_at           TEXT
+            )",
+            [],
+        )?;
+    }
+
+    // Standalone calendar events. They stay on this device and are deliberately
+    // separate from both account sync and one-way task-to-Google push.
+    if !table_exists(conn, "events") {
+        conn.execute_batch(
+            "
+            CREATE TABLE events (
+                id                 TEXT PRIMARY KEY,
+                title              TEXT NOT NULL,
+                description        TEXT,
+                start_at           TEXT,
+                end_at             TEXT,
+                all_day            INTEGER NOT NULL DEFAULT 0,
+                created_at         TEXT NOT NULL,
+                updated_at         TEXT NOT NULL,
+                deleted_at         TEXT
+            );
+            CREATE INDEX idx_events_start ON events(start_at);
+            ",
+        )?;
+    } else if column_exists(conn, "events", "source") {
+        // Remove mirrors created by development builds of the deferred two-way
+        // Google event sync. v1.9 ships standalone local events only.
+        conn.execute("DELETE FROM events WHERE source = 'google'", [])?;
     }
 
     Ok(())
@@ -312,7 +380,11 @@ fn migrate_ids_to_uuid(conn: &Connection) -> rusqlite::Result<()> {
         let mut stmt = conn.prepare("SELECT id, name, color FROM labels")?;
         let rows = stmt
             .query_map([], |r| {
-                Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         rows.into_iter()
@@ -390,8 +462,9 @@ fn migrate_ids_to_uuid(conn: &Connection) -> rusqlite::Result<()> {
             .collect()
     };
     let sessions: Vec<SessionRow> = {
-        let mut stmt = conn
-            .prepare("SELECT id, task_id, start_at, end_at, seconds, notified FROM time_sessions")?;
+        let mut stmt = conn.prepare(
+            "SELECT id, task_id, start_at, end_at, seconds, notified FROM time_sessions",
+        )?;
         let rows = stmt
             .query_map([], |r| {
                 Ok((
@@ -579,12 +652,8 @@ mod tests {
     fn migrates_integer_ids_to_uuids() {
         let conn = Connection::open_in_memory().unwrap();
         seed_legacy(&conn);
-
-        // init() runs the CREATE TABLE IF NOT EXISTS (no-ops on the existing
-        // tables) then migrate(), which performs the UUID conversion.
         init(&conn).unwrap();
 
-        // tasks.id is now TEXT.
         let id_type: String = conn
             .query_row(
                 "SELECT type FROM pragma_table_info('tasks') WHERE name = 'id'",
@@ -594,7 +663,6 @@ mod tests {
             .unwrap();
         assert_eq!(id_type, "TEXT");
 
-        // Row counts preserved.
         let tasks: i64 = conn
             .query_row("SELECT COUNT(*) FROM tasks", [], |r| r.get(0))
             .unwrap();
@@ -609,7 +677,6 @@ mod tests {
             .unwrap();
         assert_eq!((tasks, labels, links, sessions), (2, 2, 3, 1));
 
-        // Every id is now a 36-char UUID string, not a small integer.
         let task_id: String = conn
             .query_row("SELECT id FROM tasks WHERE title = 'ship it'", [], |r| {
                 r.get(0)
@@ -617,8 +684,6 @@ mod tests {
             .unwrap();
         assert_eq!(task_id.len(), 36);
 
-        // Foreign keys were remapped consistently: 'ship it' still has exactly
-        // its two labels, joined by the new UUIDs.
         let ship_labels: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM task_labels tl
@@ -630,7 +695,6 @@ mod tests {
             .unwrap();
         assert_eq!(ship_labels, 2);
 
-        // The focus session still points at 'ship it' via the remapped key.
         let session_task: String = conn
             .query_row(
                 "SELECT t.title FROM time_sessions s JOIN tasks t ON t.id = s.task_id",
@@ -640,7 +704,6 @@ mod tests {
             .unwrap();
         assert_eq!(session_task, "ship it");
 
-        // Running init() again is a no-op (ids already TEXT) and preserves ids.
         init(&conn).unwrap();
         let same: String = conn
             .query_row("SELECT id FROM tasks WHERE title = 'ship it'", [], |r| {
@@ -656,7 +719,6 @@ mod tests {
         seed_legacy(&conn);
         init(&conn).unwrap();
 
-        // updated_at is backfilled from created_at, deleted_at starts NULL.
         let (updated, deleted): (String, Option<String>) = conn
             .query_row(
                 "SELECT updated_at, deleted_at FROM tasks WHERE title = 'buy milk'",

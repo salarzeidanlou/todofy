@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
 import type { Subtask, Task } from "../types";
-import { CheckIcon, CloseIcon, PlusIcon } from "./Icons";
+import { CloseIcon, PlusIcon } from "./Icons";
+import { Checkbox } from "./Checkbox";
 
 /**
  * A checklist for breaking a task into smaller steps. Big, undividable tasks
@@ -63,17 +64,13 @@ export function SubtaskList({
       <div class="flex flex-col gap-0.5">
         {subs.map((s) => (
           <div key={s.id} class="group flex items-center gap-2">
-            <button
-              onClick={() => toggle(s.id)}
-              class={`grid h-4 w-4 shrink-0 place-items-center rounded border-2 transition-colors ${
-                s.done
-                  ? "border-[var(--color-success)] bg-[var(--color-success)] text-white"
-                  : "border-[var(--color-border-strong)] text-transparent hover:border-[var(--color-accent)]"
-              }`}
+            <Checkbox
+              checked={s.done}
+              onChange={() => toggle(s.id)}
+              size={16}
+              color="var(--color-success)"
               title={s.done ? "Mark step incomplete" : "Mark step done"}
-            >
-              <CheckIcon width={10} height={10} stroke-width={3} />
-            </button>
+            />
             <input
               key={s.id + ":" + s.text}
               defaultValue={s.text}

@@ -131,5 +131,34 @@ export type ViewId =
   | { kind: "settings" }
   | { kind: "focus" }
   | { kind: "journal" }
+  | { kind: "calendar" }
   | { kind: "date"; date: string }
   | { kind: "label"; labelId: string };
+
+export interface Event {
+  id: string;
+  title: string;
+  description: string | null;
+  startAt: string | null;
+  endAt: string | null;
+  allDay: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NewEvent {
+  title: string;
+  description?: string | null;
+  startAt?: string | null;
+  endAt?: string | null;
+  allDay?: boolean;
+}
+
+export interface EventPatch {
+  id: string;
+  title?: string;
+  description?: string | null;
+  startAt?: string | null;
+  endAt?: string | null;
+  allDay?: boolean;
+}

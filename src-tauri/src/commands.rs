@@ -1,7 +1,10 @@
 use crate::db::{new_uuid, Db};
-use crate::models::{JournalEntry, JournalPatch, Label, NewJournalEntry, NewTask, Task, TaskPatch};
+use crate::models::{
+    Event, EventPatch, JournalEntry, JournalPatch, Label, NewEvent, NewJournalEntry, NewTask, Task,
+    TaskPatch,
+};
 use crate::recur;
-use chrono::Local;
+use chrono::{DateTime, Local};
 use rusqlite::{params, Connection};
 use tauri::State;
 
@@ -9,6 +12,26 @@ type CmdResult<T> = Result<T, String>;
 
 fn now_iso() -> String {
     Local::now().to_rfc3339()
+}
+fn validate_event_range(
+    all_day: bool,
+    start_at: Option<&str>,
+    end_at: Option<&str>,
+) -> CmdResult<()> {
+    if all_day {
+        return Ok(());
+    }
+    let (Some(start_at), Some(end_at)) = (start_at, end_at) else {
+        return Ok(());
+    };
+    let start = DateTime::parse_from_rfc3339(start_at)
+        .map_err(|_| "Timed event start must be a valid ISO datetime".to_string())?;
+    let end = DateTime::parse_from_rfc3339(end_at)
+        .map_err(|_| "Timed event end must be a valid ISO datetime".to_string())?;
+    if end <= start {
+        return Err("Event end time must be later than its start time".to_string());
+    }
+    Ok(())
 }
 
 fn label_ids_for(conn: &Connection, task_id: &str) -> rusqlite::Result<Vec<String>> {
@@ -461,4 +484,156 @@ pub fn delete_journal(db: State<Db>, id: String) -> CmdResult<()> {
     )
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+fn load_event(conn: &Connection, id: &str) -> rusqlite::Result<Event> {
+    conn.query_row(
+        "SELECT id, title, description, start_at, end_at, all_day,
+                created_at, updated_at
+         FROM events WHERE id = ?1",
+        [id],
+        |r| {
+            Ok(Event {
+                id: r.get(0)?,
+                title: r.get(1)?,
+                description: r.get(2)?,
+                start_at: r.get(3)?,
+                end_at: r.get(4)?,
+                all_day: r.get(5)?,
+                created_at: r.get(6)?,
+                updated_at: r.get(7)?,
+            })
+        },
+    )
+}
+
+#[tauri::command]
+pub fn list_events(db: State<Db>) -> CmdResult<Vec<Event>> {
+    let conn = db.conn();
+    let mut stmt = conn
+        .prepare(
+            "SELECT id FROM events
+             WHERE deleted_at IS NULL
+             ORDER BY start_at",
+        )
+        .map_err(|e| e.to_string())?;
+    let ids: Vec<String> = stmt
+        .query_map([], |r| r.get(0))
+        .map_err(|e| e.to_string())?
+        .collect::<rusqlite::Result<_>>()
+        .map_err(|e| e.to_string())?;
+    ids.into_iter()
+        .map(|id| load_event(&conn, &id).map_err(|e| e.to_string()))
+        .collect()
+}
+
+#[tauri::command]
+pub fn create_event(db: State<Db>, event: NewEvent) -> CmdResult<Event> {
+    validate_event_range(
+        event.all_day,
+        event.start_at.as_deref(),
+        event.end_at.as_deref(),
+    )?;
+    let conn = db.conn();
+    let now = now_iso();
+    let id = new_uuid();
+    conn.execute(
+        "INSERT INTO events
+            (id, title, description, start_at, end_at, all_day, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+        params![
+            id,
+            event.title,
+            event.description,
+            event.start_at,
+            event.end_at,
+            event.all_day,
+            now,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    load_event(&conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn update_event(db: State<Db>, patch: EventPatch) -> CmdResult<Event> {
+    let conn = db.conn();
+    let current = load_event(&conn, &patch.id).map_err(|e| e.to_string())?;
+    let all_day = patch.all_day.unwrap_or(current.all_day);
+    let start_at = match patch.start_at.as_ref() {
+        Some(value) => value.as_deref(),
+        None => current.start_at.as_deref(),
+    };
+    let end_at = match patch.end_at.as_ref() {
+        Some(value) => value.as_deref(),
+        None => current.end_at.as_deref(),
+    };
+    validate_event_range(all_day, start_at, end_at)?;
+    if let Some(title) = &patch.title {
+        conn.execute(
+            "UPDATE events SET title = ?1 WHERE id = ?2",
+            params![title, patch.id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    if let Some(description) = &patch.description {
+        conn.execute(
+            "UPDATE events SET description = ?1 WHERE id = ?2",
+            params![description, patch.id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    if let Some(start_at) = &patch.start_at {
+        conn.execute(
+            "UPDATE events SET start_at = ?1 WHERE id = ?2",
+            params![start_at, patch.id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    if let Some(end_at) = &patch.end_at {
+        conn.execute(
+            "UPDATE events SET end_at = ?1 WHERE id = ?2",
+            params![end_at, patch.id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    if let Some(all_day) = patch.all_day {
+        conn.execute(
+            "UPDATE events SET all_day = ?1 WHERE id = ?2",
+            params![all_day, patch.id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    conn.execute(
+        "UPDATE events SET updated_at = ?1 WHERE id = ?2",
+        params![now_iso(), patch.id],
+    )
+    .map_err(|e| e.to_string())?;
+    load_event(&conn, &patch.id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_event(db: State<Db>, id: String) -> CmdResult<()> {
+    let conn = db.conn();
+    let now = now_iso();
+    conn.execute(
+        "UPDATE events SET deleted_at = ?1, updated_at = ?1 WHERE id = ?2",
+        params![now, id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod event_tests {
+    use super::validate_event_range;
+
+    #[test]
+    fn timed_event_end_must_follow_start() {
+        let start = "2026-09-06T10:00:00Z";
+        assert!(validate_event_range(false, Some(start), Some("2026-09-06T11:00:00Z")).is_ok());
+        assert!(validate_event_range(false, Some(start), Some(start)).is_err());
+        assert!(validate_event_range(false, Some(start), Some("2026-09-06T09:00:00Z")).is_err());
+        assert!(validate_event_range(true, Some(start), Some(start)).is_ok());
+    }
 }

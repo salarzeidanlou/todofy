@@ -5,6 +5,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { api } from "../lib/api";
 import { useStore } from "../store";
 import { AccountSection } from "./AccountSection";
+import { CalendarSection } from "./CalendarSection";
 import {
   BellIcon,
   BoltIcon,
@@ -158,6 +159,7 @@ export function SettingsView() {
 
       <div class="secondary-scroll settings-content mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-8 pt-2 pb-8">
         <AccountSection />
+        <CalendarSection />
 
         {/* Startup */}
         <Section title="Startup">

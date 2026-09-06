@@ -4,9 +4,9 @@
 
 # todofy
 
-**A modern, fast, and beautiful to‑do app for Linux.**
+**A modern, fast, and private task and calendar app for Linux, macOS, and Windows.**
 
-Smart lists, labels, recurring tasks, focus timers, and reminders that actually notify you — even when it's tucked away in your tray.
+Plan tasks and local events, stay focused with timers and reminders, optionally sync across devices, and push dated tasks one‑way to Google Calendar — even when todofy is tucked away in your tray.
 
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-1a2029?style=flat-square&logo=linux&logoColor=white)
 ![Tauri](https://img.shields.io/badge/Tauri-2.x-24C8DB?style=flat-square&logo=tauri&logoColor=white)
@@ -47,7 +47,10 @@ Smart lists, labels, recurring tasks, focus timers, and reminders that actually 
 - ⌨️ **Keyboard‑first** — add, navigate, complete, and edit without touching the mouse
 - 🪟 **System tray** — closes to tray and keeps running so reminders never miss; start/pause the Pomodoro, stop the task timer, and watch the live countdown right from the tray
 - 🧭 **Date-oriented navigation** — move between smart views from the top navigation bar and use the day rail to jump through your schedule
-- ☁️ **Optional account sync** — sign in with an email and password to sync your tasks, labels, focus history, and journal across devices (backed by Supabase, with row‑level security). Sessions are kept in your OS secret store, and the whole thing is opt‑in
+- ☁️ **Optional account sync** — sign in with an email and password or **Continue with Google** to sync your tasks, labels, focus history, and journal across devices (backed by Supabase, with row‑level security). Sessions are kept in your OS secret store, and the whole thing is opt‑in
+- 🗓️ **Local calendar** — plan in month, week, or day views, with tasks on their due dates and standalone all-day or timed events you can create and edit. Standalone events stay on this device and are not included in account sync or pushed to Google
+- 📅 **Google Calendar sync** — push your dated tasks to a dedicated **todofy** calendar (one‑way) so they sit right beside your meetings: all‑day for date‑only tasks, timed for tasks with a reminder. Recurring tasks move as they roll, completed and deleted tasks tidy themselves up, and you can keep finished tasks or limit the push to timed tasks only. Opt‑in, gated behind account sign‑in
+- 🗑️ **Delete your account** — remove your current account and all of its cloud data whenever you like, and optionally wipe the copy on this device too. You can register a fresh account later with the same email address
 - 💾 **Local‑first** — everything is stored in a local SQLite database and works fully offline; sync is additive, and with no account there's no cloud and no tracking
 
 ## 📸 Screenshots
@@ -88,20 +91,20 @@ Grab a package from the [Releases](../../releases) page, or build it yourself (s
 **AppImage** — portable, runs on any distro:
 
 ```bash
-chmod +x todofy_1.8.0_amd64.AppImage
-./todofy_1.8.0_amd64.AppImage
+chmod +x todofy_1.9.0_amd64.AppImage
+./todofy_1.9.0_amd64.AppImage
 ```
 
 **Debian / Ubuntu:**
 
 ```bash
-sudo dpkg -i todofy_1.8.0_amd64.deb
+sudo dpkg -i todofy_1.9.0_amd64.deb
 ```
 
 **Fedora / RHEL / openSUSE:**
 
 ```bash
-sudo rpm -i todofy-1.8.0-1.x86_64.rpm
+sudo rpm -i todofy-1.9.0-1.x86_64.rpm
 ```
 
 **macOS** — open the `.dmg` and drag todofy into Applications. It's not
@@ -109,15 +112,14 @@ notarized yet, so on first launch right‑click the app and choose **Open** to
 get past Gatekeeper:
 
 ```
-todofy_1.8.0_x64.dmg      # Intel
-todofy_1.8.0_aarch64.dmg  # Apple Silicon
+todofy_1.9.0_universal.dmg  # Intel and Apple Silicon
 ```
 
 **Windows** — run the installer:
 
 ```
-todofy_1.8.0_x64-setup.exe   # NSIS installer
-todofy_1.8.0_x64_en-US.msi   # or the MSI
+todofy_1.9.0_x64-setup.exe   # NSIS installer
+todofy_1.9.0_x64_en-US.msi   # or the MSI
 ```
 
 > Your tasks live in the app's data directory — `~/.local/share/com.unifybrowse.todofy/`
@@ -193,7 +195,26 @@ Sync is **off by default** — todofy is local‑first and works fully offline w
    # VITE_SUPABASE_PUBLISHABLE_KEY=<your-publishable-key>
    ```
 
-4. **Build** as above, then open **Settings → Account** in the app and sign up — sync turns on from there.
+4. **Deploy the account-deletion function.** So users can delete their own account (which can't be done with the client key), deploy the [`delete-account`](supabase/functions/delete-account/index.ts) edge function. It verifies the caller and deletes their auth user; the schema's `on delete cascade` removes all their data:
+
+   ```bash
+   supabase functions deploy delete-account
+   ```
+
+   The edge runtime provides the service-role key automatically — no secrets to configure.
+
+5. **(Optional) Enable Google sign-in.** In the [Google Cloud Console](https://console.cloud.google.com), create an OAuth client of type **Web application** and add your Supabase callback (`https://<your-project-ref>.supabase.co/auth/v1/callback`) as an authorized redirect URI. Paste the client ID and secret into **Supabase → Authentication → Providers → Google**, then add `todofy://auth-callback` under **Authentication → URL Configuration → Redirect URLs**. The app opens the system browser and returns through its `todofy://` deep link.
+
+6. **(Optional) Enable Google Calendar sync.** In the [Google Cloud Console](https://console.cloud.google.com), enable the **Google Calendar API** and create a second OAuth client of type **Desktop app**. Add its client ID and secret to your `.env`:
+
+   ```bash
+   # VITE_GOOGLE_CLIENT_ID=<your-desktop-client-id>
+   # VITE_GOOGLE_CLIENT_SECRET=<your-desktop-client-secret>
+   ```
+
+   The desktop flow returns through a loopback redirect (`http://127.0.0.1`) with PKCE — no deep link needed here. todofy writes only to a dedicated **todofy** calendar it creates, using the narrow `calendar.app.created` scope, so it never touches your other calendars. The client secret is embedded per Google's installed‑app flow and is not treated as confidential. Connect it from **Settings → Calendar** (requires a signed‑in account).
+
+7. **Build** as above, then open **Settings → Account** in the app and sign up — sync turns on from there.
 
 ### Regenerate the app icon
 
@@ -236,6 +257,8 @@ todofy/
 │       ├── popup.rs        # custom corner notification window
 │       ├── tray.rs         # system tray + live timer controls
 │       ├── sync.rs         # account-sync merge (push/pull, last-write-wins)
+│       ├── google_calendar.rs # Google OAuth loopback listener (desktop PKCE)
+│       ├── calendar.rs     # one-way Google Calendar task-push diff + poll thread
 │       ├── secret.rs       # OS keychain access for the session
 │       └── lib.rs          # app setup
 └── app-icon.svg            # source for the app icon
@@ -252,6 +275,8 @@ todofy/
 - [x] Search & filters
 - [x] Optional account sync across devices
 - [x] Journal with mood, Markdown, and day summaries
+- [x] Local calendar with month, week, and day views
+- [x] Google Calendar sync (one‑way push)
 
 ## 🤝 Contributing
 

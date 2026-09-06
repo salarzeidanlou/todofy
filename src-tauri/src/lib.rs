@@ -1,12 +1,14 @@
+mod calendar;
 mod commands;
 mod db;
+mod google_calendar;
 mod models;
 mod notify;
 mod popup;
 mod quickwin;
-mod secret;
 mod recur;
 mod scheduler;
+mod secret;
 mod settings;
 mod sync;
 mod timer;
@@ -15,9 +17,13 @@ mod tray;
 use db::Db;
 use rusqlite::Connection;
 use std::sync::Mutex;
-use tauri::{Manager, WindowEvent};
+use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
+use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+
+const DEEP_LINK_SCHEME: &str = "todofy://";
+const DEEP_LINK_EVENT: &str = "deep-link";
 
 /// Flag added to the launch-on-login command so the app can tell a login
 /// launch apart from the user opening it by hand.
@@ -28,13 +34,19 @@ pub fn run() {
     tauri::Builder::default()
         // Must be the FIRST plugin: if todofy is already running, a second
         // launch focuses the existing window instead of starting a new one.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if let Some(win) = app.get_webview_window("main") {
                 let _ = win.show();
                 let _ = win.unminimize();
                 let _ = win.set_focus();
             }
+            // On Linux/Windows a deep link into the running app arrives as a
+            // CLI arg to this second launch; forward it to the frontend.
+            if let Some(url) = args.iter().find(|a| a.starts_with(DEEP_LINK_SCHEME)) {
+                let _ = app.emit(DEEP_LINK_EVENT, url.clone());
+            }
         }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         // Launch-on-login. The registered command carries AUTOSTART_FLAG so the
@@ -90,8 +102,24 @@ pub fn run() {
                 eprintln!("todofy: could not register Ctrl+Alt+A global shortcut: {e}");
             }
 
+            // Forward deep links delivered at runtime to the frontend.
+            let handle = app.handle().clone();
+            app.deep_link().on_open_url(move |event| {
+                if let Some(url) = event.urls().into_iter().next() {
+                    let _ = handle.emit(DEEP_LINK_EVENT, url.to_string());
+                }
+            });
+            // No installer wires the scheme in dev/Linux, so register at runtime.
+            #[cfg(any(target_os = "linux", debug_assertions))]
+            {
+                let _ = app.deep_link().register_all();
+            }
+
             // Start the reminder scheduler.
             scheduler::spawn(app.handle().clone());
+
+            // Nudge the frontend to push tasks to Google Calendar when they drift.
+            calendar::spawn(app.handle().clone());
 
             // System-tray icon with focus controls + live timer status.
             tray::init(app)?;
@@ -123,6 +151,10 @@ pub fn run() {
             commands::create_journal,
             commands::update_journal,
             commands::delete_journal,
+            commands::list_events,
+            commands::create_event,
+            commands::update_event,
+            commands::delete_event,
             notify::send_test_notification,
             popup::notify_popup_dismiss,
             popup::notify_popup_open,
@@ -146,10 +178,16 @@ pub fn run() {
             sync::sync_get_watermark,
             sync::sync_set_watermark,
             sync::sync_reset,
+            sync::wipe_local_data,
             sync::sync_purge_tombstones,
             secret::secret_get,
             secret::secret_set,
             secret::secret_delete,
+            google_calendar::google_oauth_flow,
+            calendar::calendar_pending,
+            calendar::calendar_link_set,
+            calendar::calendar_link_remove,
+            calendar::calendar_clear_links,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -15,6 +15,10 @@ export const supabase = createClient(url || "http://localhost", anonKey || "anon
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: false,
+    // Native OAuth callbacks return an authorization code. The matching
+    // verifier is persisted in secureStorage, binding the callback to the
+    // sign-in attempt that originated on this device.
+    flowType: "pkce",
     storage: secureStorage,
   },
   // Open-source deployments use `public` by default. A private deployment can

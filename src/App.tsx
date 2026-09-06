@@ -7,6 +7,7 @@ import { listen } from "@tauri-apps/api/event";
 import { activeCount, useStore } from "./store";
 import { useAuth } from "./lib/auth";
 import { initSync } from "./lib/sync";
+import { initCalendar } from "./lib/googleCalendar";
 import { applyTheme } from "./lib/theme";
 import { useKeyboard } from "./lib/useKeyboard";
 import type { ActiveReminder } from "./types";
@@ -67,6 +68,8 @@ export function App() {
     useAuth.getState().init();
     // Wire account sync (runs on sign-in, then periodically + after edits).
     initSync();
+    // Wire Google Calendar push (pushes dated tasks while connected).
+    initCalendar();
     // Ask for desktop notification permission once, up front.
     (async () => {
       if (!(await isPermissionGranted())) {
