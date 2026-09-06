@@ -7,7 +7,12 @@ import { useStore } from "../store";
 type SyncRow = Record<string, unknown>;
 
 interface SyncTombstone extends SyncRow {
-  entity_type: "tasks" | "labels" | "task_labels" | "time_sessions" | "journal_entries";
+  entity_type:
+    | "tasks"
+    | "labels"
+    | "task_labels"
+    | "time_sessions"
+    | "journal_entries";
   entity_id: string;
   deleted_at: string;
 }
@@ -22,25 +27,40 @@ interface Bundle {
 }
 
 export type SyncStatus = "idle" | "syncing" | "error" | "offline";
+export type AccountDataChoice = "account" | "copy-local";
+
+export interface SyncAccountChoice {
+  previousUserId: string | null;
+}
 
 interface SyncState {
   status: SyncStatus;
   lastSyncedAt: string | null;
   error: string | null;
+  accountChoice: SyncAccountChoice | null;
   syncNow: () => Promise<void>;
+  resolveAccountChoice: (choice: AccountDataChoice) => Promise<void>;
 }
 
 export const useSync = create<SyncState>((set, get) => ({
   status: "idle",
   lastSyncedAt: null,
   error: null,
+  accountChoice: null,
   syncNow: async () => {
     if (get().status === "syncing") return;
     if (!syncConfigured) return;
-    if (!useAuth.getState().session) return;
+    const session = useAuth.getState().session;
+    if (!session || get().accountChoice) return;
 
     set({ status: "syncing", error: null });
     try {
+      const accountChoice = await ensureSyncOwner(session.user.id);
+      if (accountChoice) {
+        set({ status: "idle", accountChoice });
+        return;
+      }
+
       const since = await invoke<string>("sync_get_watermark");
       const startedAt = new Date().toISOString();
 
@@ -70,11 +90,81 @@ export const useSync = create<SyncState>((set, get) => ({
       // Reclaim space from tombstones old enough to have propagated everywhere.
       invoke("sync_purge_tombstones", { days: 30 }).catch(() => {});
     } catch (e) {
-      const offline = e instanceof TypeError || /fetch|network/i.test(String(e));
+      const offline =
+        e instanceof TypeError || /fetch|network/i.test(String(e));
       set({ status: offline ? "offline" : "error", error: String(e) });
     }
   },
+  resolveAccountChoice: async (choice) => {
+    const session = useAuth.getState().session;
+    if (!session) return;
+    set({ status: "syncing", error: null });
+    try {
+      if (choice === "account") {
+        await invoke("sync_use_account_data", { userId: session.user.id });
+      } else {
+        await invoke("sync_copy_local_data", { userId: session.user.id });
+      }
+      set({ status: "idle", accountChoice: null });
+      await get().syncNow();
+    } catch (e) {
+      set({ status: "error", error: String(e) });
+    }
+  },
 }));
+
+const EPOCH = "1970-01-01T00:00:00+00:00";
+
+async function ensureSyncOwner(
+  userId: string,
+): Promise<SyncAccountChoice | null> {
+  const owner = await invoke<string | null>("sync_get_owner");
+  if (owner === userId) return null;
+
+  const hasLocalData = await invoke<boolean>("sync_has_local_data");
+  if (!hasLocalData) {
+    if (owner) await invoke("sync_use_account_data", { userId });
+    else await invoke("sync_claim_owner", { userId });
+    return null;
+  }
+
+  if (!owner) {
+    const [local, remote] = await Promise.all([
+      invoke<Bundle>("sync_changes_since", { since: EPOCH }),
+      pull(EPOCH),
+    ]);
+    if (bundlesOverlap(local, remote)) {
+      await invoke("sync_claim_owner", { userId });
+      return null;
+    }
+  }
+
+  return { previousUserId: owner };
+}
+
+function bundlesOverlap(a: Bundle, b: Bundle): boolean {
+  const overlaps = (
+    left: SyncRow[],
+    right: SyncRow[],
+    key: (row: SyncRow) => string,
+  ) => {
+    const keys = new Set(left.map(key).filter(Boolean));
+    return right.some((row) => keys.has(key(row)));
+  };
+  const id = (row: SyncRow) => String(row.id ?? "");
+  const association = (row: SyncRow) =>
+    `${row.task_id ?? ""}:${row.label_id ?? ""}`;
+  const tombstone = (row: SyncRow) =>
+    `${row.entity_type ?? ""}:${row.entity_id ?? ""}`;
+  return (
+    overlaps(a.tasks, b.tasks, id) ||
+    overlaps(a.labels, b.labels, id) ||
+    overlaps(a.sessions, b.sessions, id) ||
+    overlaps(a.journal, b.journal, id) ||
+    overlaps(a.task_labels, b.task_labels, association) ||
+    overlaps(a.tombstones, b.tombstones, tombstone)
+  );
+}
 
 async function pull(since: string): Promise<Bundle> {
   const fetchTable = async (table: string, watermarkColumn = "updated_at") => {
@@ -92,12 +182,19 @@ async function pull(since: string): Promise<Bundle> {
     task_labels: await fetchTable("task_labels"),
     sessions: await fetchTable("time_sessions"),
     journal: await fetchTable("journal_entries"),
-    tombstones: (await fetchTable("sync_tombstones", "recorded_at")) as SyncTombstone[],
+    tombstones: (await fetchTable(
+      "sync_tombstones",
+      "recorded_at",
+    )) as SyncTombstone[],
   };
 }
 
 async function push(local: Bundle): Promise<void> {
-  const upsert = async (table: string, rows: SyncRow[], onConflict?: string) => {
+  const upsert = async (
+    table: string,
+    rows: SyncRow[],
+    onConflict?: string,
+  ) => {
     if (!rows.length) return;
     const query = onConflict
       ? supabase.from(table).upsert(rows, { onConflict })
@@ -117,16 +214,20 @@ async function push(local: Bundle): Promise<void> {
   // Persist the deletion marker before removing content. Markers are immutable:
   // UUIDs are never reused, and keeping the first deletion is enough to stop a
   // stale device from resurrecting the row.
-  const markerRows = local.tombstones.map(({ entity_type, entity_id, deleted_at }) => ({
-    entity_type,
-    entity_id,
-    deleted_at,
-  }));
-  const { error: markerError } = await supabase.from("sync_tombstones").upsert(markerRows, {
-    onConflict: "user_id,entity_type,entity_id",
-    ignoreDuplicates: true,
-    defaultToNull: false,
-  });
+  const markerRows = local.tombstones.map(
+    ({ entity_type, entity_id, deleted_at }) => ({
+      entity_type,
+      entity_id,
+      deleted_at,
+    }),
+  );
+  const { error: markerError } = await supabase
+    .from("sync_tombstones")
+    .upsert(markerRows, {
+      onConflict: "user_id,entity_type,entity_id",
+      ignoreDuplicates: true,
+      defaultToNull: false,
+    });
   if (markerError) throw new Error(markerError.message);
 
   const deleteIds = async (table: string, ids: string[]) => {
@@ -135,14 +236,17 @@ async function push(local: Bundle): Promise<void> {
     if (error) throw new Error(error.message);
   };
   const idsFor = (type: SyncTombstone["entity_type"]) =>
-    local.tombstones.filter((t) => t.entity_type === type).map((t) => t.entity_id);
+    local.tombstones
+      .filter((t) => t.entity_type === type)
+      .map((t) => t.entity_id);
 
   // Children before parents. Task and label foreign keys also cascade, but the
   // explicit order keeps retries deterministic and works for standalone child
   // deletions too.
   for (const key of idsFor("task_labels")) {
     const [taskId, labelId] = key.split(":", 2);
-    if (!taskId || !labelId) throw new Error(`Invalid task-label tombstone: ${key}`);
+    if (!taskId || !labelId)
+      throw new Error(`Invalid task-label tombstone: ${key}`);
     const { error } = await supabase
       .from("task_labels")
       .delete()
@@ -190,7 +294,12 @@ export function initSync() {
       void useSync.getState().syncNow();
       interval = setInterval(() => void useSync.getState().syncNow(), 30_000);
     } else {
-      useSync.setState({ status: "idle", lastSyncedAt: null, error: null });
+      useSync.setState({
+        status: "idle",
+        lastSyncedAt: null,
+        error: null,
+        accountChoice: null,
+      });
     }
   });
 

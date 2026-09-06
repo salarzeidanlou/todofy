@@ -336,9 +336,12 @@ function AuthModal({
     if (googleBusy) return;
     setError(null);
     setGoogleBusy(true);
-    const result = await signInWithGoogle();
-    if (!result.ok) {
-      setError(result.error ?? "Could not start Google sign-in.");
+    try {
+      const result = await signInWithGoogle();
+      if (!result.ok) {
+        setError(result.error ?? "Could not complete Google sign-in.");
+      }
+    } finally {
       setGoogleBusy(false);
     }
   };

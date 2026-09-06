@@ -10,10 +10,11 @@ use chrono::DateTime;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use tauri::State;
 
 const WATERMARK_KEY: &str = "sync_last_synced_at";
+const OWNER_KEY: &str = "sync_owner_user_id";
 const EPOCH: &str = "1970-01-01T00:00:00+00:00";
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -190,8 +191,14 @@ fn collect_changes(conn: &Connection, since: &str) -> rusqlite::Result<SyncBundl
     }
 
     let mut task_labels = Vec::new();
-    let mut stmt =
-        conn.prepare("SELECT task_id, label_id, updated_at, deleted_at FROM task_labels")?;
+    let mut stmt = conn.prepare(
+        "SELECT tl.task_id, tl.label_id, tl.updated_at, tl.deleted_at
+           FROM task_labels tl
+           JOIN tasks t ON t.id = tl.task_id
+           JOIN labels l ON l.id = tl.label_id
+          WHERE tl.deleted_at IS NOT NULL
+             OR (t.deleted_at IS NULL AND l.deleted_at IS NULL)",
+    )?;
     let rows = stmt.query_map([], |r| {
         Ok(SyncTaskLabel {
             task_id: r.get(0)?,
@@ -217,7 +224,10 @@ fn collect_changes(conn: &Connection, since: &str) -> rusqlite::Result<SyncBundl
 
     let mut sessions = Vec::new();
     let mut stmt = conn.prepare(
-        "SELECT id, task_id, start_at, end_at, seconds, updated_at, deleted_at FROM time_sessions",
+        "SELECT s.id, s.task_id, s.start_at, s.end_at, s.seconds, s.updated_at, s.deleted_at
+           FROM time_sessions s
+           JOIN tasks t ON t.id = s.task_id
+          WHERE s.deleted_at IS NOT NULL OR t.deleted_at IS NULL",
     )?;
     let rows = stmt.query_map([], |r| {
         Ok(SyncSession {
@@ -614,6 +624,183 @@ fn apply_tombstone(conn: &Connection, tombstone: &SyncTombstone) -> rusqlite::Re
 
 // ------------------------------------------------------------------- watermark
 
+fn validate_user_id(user_id: &str) -> rusqlite::Result<()> {
+    uuid::Uuid::parse_str(user_id)
+        .map(|_| ())
+        .map_err(|_| rusqlite::Error::InvalidParameterName("user_id must be a UUID".into()))
+}
+
+#[tauri::command]
+pub fn sync_get_owner(db: State<Db>) -> Result<Option<String>, String> {
+    Ok(settings::read(&db.conn(), OWNER_KEY))
+}
+
+#[tauri::command]
+pub fn sync_has_local_data(db: State<Db>) -> Result<bool, String> {
+    has_local_sync_data(&db.conn()).map_err(|e| e.to_string())
+}
+
+fn has_local_sync_data(conn: &Connection) -> rusqlite::Result<bool> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM tasks)
+             OR EXISTS(SELECT 1 FROM labels)
+             OR EXISTS(SELECT 1 FROM task_labels)
+             OR EXISTS(SELECT 1 FROM time_sessions)
+             OR EXISTS(SELECT 1 FROM journal_entries)",
+        [],
+        |row| row.get::<_, bool>(0),
+    )
+}
+
+/// Claim an unowned legacy/empty local database for `user_id`. Refuse to
+/// overwrite a different owner: switching accounts must use one of the two
+/// explicit choice commands below.
+#[tauri::command]
+pub fn sync_claim_owner(db: State<Db>, user_id: String) -> Result<(), String> {
+    let conn = db.conn();
+    validate_user_id(&user_id).map_err(|e| e.to_string())?;
+    if let Some(owner) = settings::read(&conn, OWNER_KEY) {
+        if owner != user_id {
+            return Err("Local data belongs to another account".into());
+        }
+        return Ok(());
+    }
+    settings::write(&conn, OWNER_KEY, &user_id).map_err(|e| e.to_string())
+}
+
+/// Discard only account-synced local content, retain device-local calendar
+/// events/settings, then let the next epoch sync load the selected account.
+#[tauri::command]
+pub fn sync_use_account_data(db: State<Db>, user_id: String) -> Result<(), String> {
+    let mut conn = db.conn();
+    use_account_data_inner(&mut conn, &user_id).map_err(|e| e.to_string())
+}
+
+fn use_account_data_inner(conn: &mut Connection, user_id: &str) -> rusqlite::Result<()> {
+    validate_user_id(user_id)?;
+    let tx = conn.transaction()?;
+    for table in [
+        "task_labels",
+        "time_sessions",
+        "tasks",
+        "labels",
+        "journal_entries",
+    ] {
+        tx.execute(&format!("DELETE FROM {table}"), [])?;
+    }
+    settings::write(&tx, OWNER_KEY, user_id)?;
+    settings::write(&tx, WATERMARK_KEY, EPOCH)?;
+    tx.commit()
+}
+
+/// Copy this device's live synced content into another account. Every synced
+/// primary key is regenerated as one FK-consistent graph, so hidden rows owned
+/// by the previous user cannot collide with the new user's RLS-protected rows.
+#[tauri::command]
+pub fn sync_copy_local_data(db: State<Db>, user_id: String) -> Result<(), String> {
+    let mut conn = db.conn();
+    copy_local_data_inner(&mut conn, &user_id).map_err(|e| e.to_string())
+}
+
+fn copy_local_data_inner(conn: &mut Connection, user_id: &str) -> rusqlite::Result<()> {
+    validate_user_id(user_id)?;
+    let tx = conn.transaction()?;
+    tx.execute_batch("PRAGMA defer_foreign_keys = ON;")?;
+
+    // Deletion history belongs to the old account. Remove it before cloning;
+    // hard-deleting parents also cleans up any inconsistent legacy children.
+    tx.execute("DELETE FROM task_labels WHERE deleted_at IS NOT NULL", [])?;
+    tx.execute("DELETE FROM time_sessions WHERE deleted_at IS NOT NULL", [])?;
+    tx.execute("DELETE FROM tasks WHERE deleted_at IS NOT NULL", [])?;
+    tx.execute("DELETE FROM labels WHERE deleted_at IS NOT NULL", [])?;
+    tx.execute(
+        "DELETE FROM journal_entries WHERE deleted_at IS NOT NULL",
+        [],
+    )?;
+
+    let ids = |table: &str| -> rusqlite::Result<Vec<String>> {
+        let mut stmt = tx.prepare(&format!("SELECT id FROM {table}"))?;
+        let rows = stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    };
+    let label_map: HashMap<String, String> = ids("labels")?
+        .into_iter()
+        .map(|old| (old, crate::db::new_uuid()))
+        .collect();
+    let task_map: HashMap<String, String> = ids("tasks")?
+        .into_iter()
+        .map(|old| (old, crate::db::new_uuid()))
+        .collect();
+    let session_map: HashMap<String, String> = ids("time_sessions")?
+        .into_iter()
+        .map(|old| (old, crate::db::new_uuid()))
+        .collect();
+    let journal_map: HashMap<String, String> = ids("journal_entries")?
+        .into_iter()
+        .map(|old| (old, crate::db::new_uuid()))
+        .collect();
+    let associations: Vec<(String, String)> = {
+        let mut stmt = tx.prepare("SELECT task_id, label_id FROM task_labels")?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows
+    };
+
+    let now = chrono::Utc::now().to_rfc3339();
+    for (old_task, old_label) in associations {
+        let (Some(new_task), Some(new_label)) =
+            (task_map.get(&old_task), label_map.get(&old_label))
+        else {
+            continue;
+        };
+        tx.execute(
+            "UPDATE task_labels
+                SET task_id = ?1, label_id = ?2, updated_at = ?3
+              WHERE task_id = ?4 AND label_id = ?5",
+            params![new_task, new_label, now, old_task, old_label],
+        )?;
+    }
+    for (old, new) in &session_map {
+        tx.execute(
+            "UPDATE time_sessions SET id = ?1, updated_at = ?2 WHERE id = ?3",
+            params![new, now, old],
+        )?;
+    }
+    for (old, new) in &task_map {
+        tx.execute(
+            "UPDATE time_sessions SET task_id = ?1 WHERE task_id = ?2",
+            params![new, old],
+        )?;
+        tx.execute(
+            "UPDATE calendar_links SET task_id = ?1 WHERE task_id = ?2",
+            params![new, old],
+        )?;
+        tx.execute(
+            "UPDATE tasks SET id = ?1, updated_at = ?2 WHERE id = ?3",
+            params![new, now, old],
+        )?;
+    }
+    for (old, new) in &label_map {
+        tx.execute(
+            "UPDATE labels SET id = ?1, updated_at = ?2 WHERE id = ?3",
+            params![new, now, old],
+        )?;
+    }
+    for (old, new) in &journal_map {
+        tx.execute(
+            "UPDATE journal_entries SET id = ?1, updated_at = ?2 WHERE id = ?3",
+            params![new, now, old],
+        )?;
+    }
+
+    settings::write(&tx, OWNER_KEY, user_id)?;
+    settings::write(&tx, WATERMARK_KEY, EPOCH)?;
+    tx.commit()
+}
+
 /// The high-water mark: local rows changed at or before this were last synced.
 #[tauri::command]
 pub fn sync_get_watermark(db: State<Db>) -> Result<String, String> {
@@ -649,6 +836,7 @@ fn wipe_local_data_inner(conn: &Connection) -> rusqlite::Result<()> {
     ] {
         conn.execute(&format!("DELETE FROM {table}"), [])?;
     }
+    conn.execute("DELETE FROM settings WHERE key = ?1", [OWNER_KEY])?;
     settings::write(conn, WATERMARK_KEY, EPOCH)
 }
 
@@ -933,6 +1121,126 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["t1"]
         );
+    }
+
+    #[test]
+    fn live_children_of_deleted_parents_are_never_pushed() {
+        let conn = setup();
+        conn.execute_batch(
+            "INSERT INTO labels (id, name, color, updated_at)
+                 VALUES ('l1', 'home', '#111', '2026-01-01T00:00:00Z');
+             INSERT INTO tasks (id, title, created_at, updated_at, deleted_at)
+                 VALUES ('t1', 'gone', '2026-01-01T00:00:00Z',
+                         '2026-02-01T00:00:00Z', '2026-02-01T00:00:00Z');
+             INSERT INTO task_labels (task_id, label_id, updated_at)
+                 VALUES ('t1', 'l1', '2026-01-01T00:00:00Z');
+             INSERT INTO time_sessions (id, task_id, start_at, updated_at)
+                 VALUES ('s1', 't1', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');",
+        )
+        .unwrap();
+
+        let bundle = collect_changes(&conn, EPOCH).unwrap();
+        assert!(bundle.tasks.is_empty());
+        assert!(bundle.task_labels.is_empty());
+        assert!(bundle.sessions.is_empty());
+        assert!(bundle
+            .tombstones
+            .iter()
+            .any(|row| row.entity_type == "tasks" && row.entity_id == "t1"));
+    }
+
+    #[test]
+    fn copying_to_another_account_rekeys_the_whole_live_graph() {
+        let mut conn = setup();
+        conn.execute_batch(
+            "INSERT INTO labels (id, name, color, updated_at)
+                 VALUES ('l1', 'home', '#111', '2026-01-01T00:00:00Z');
+             INSERT INTO tasks (id, title, created_at, updated_at)
+                 VALUES ('t1', 'task', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+             INSERT INTO task_labels (task_id, label_id, updated_at)
+                 VALUES ('t1', 'l1', '2026-01-01T00:00:00Z');
+             INSERT INTO time_sessions (id, task_id, start_at, updated_at)
+                 VALUES ('s1', 't1', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+             INSERT INTO journal_entries (id, body, entry_date, created_at, updated_at)
+                 VALUES ('j1', 'note', '2026-01-01', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+             INSERT INTO calendar_links
+                 (task_id, external_event_id, external_calendar_id, pushed_updated_at)
+                 VALUES ('t1', 'event', 'calendar', '2026-01-01T00:00:00Z');
+             INSERT INTO events (id, title, start_at, all_day, created_at, updated_at)
+                 VALUES ('local-event', 'private', '2026-01-01', 1,
+                         '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');",
+        )
+        .unwrap();
+
+        let user_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+        copy_local_data_inner(&mut conn, user_id).unwrap();
+
+        for (table, old_id) in [
+            ("labels", "l1"),
+            ("tasks", "t1"),
+            ("time_sessions", "s1"),
+            ("journal_entries", "j1"),
+        ] {
+            let count: i64 = conn
+                .query_row(
+                    &format!("SELECT COUNT(*) FROM {table} WHERE id = ?1"),
+                    [old_id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 0, "{table} retained its old id");
+        }
+        let valid_graph: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM task_labels tl
+                   JOIN tasks t ON t.id = tl.task_id
+                   JOIN labels l ON l.id = tl.label_id",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(valid_graph, 1);
+        let valid_links: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM calendar_links c JOIN tasks t ON t.id = c.task_id",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(valid_links, 1);
+        assert_eq!(settings::read(&conn, OWNER_KEY).as_deref(), Some(user_id));
+        assert_eq!(settings::read(&conn, WATERMARK_KEY).as_deref(), Some(EPOCH));
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM events", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn using_account_data_preserves_device_local_events() {
+        let mut conn = setup();
+        conn.execute_batch(
+            "INSERT INTO tasks (id, title, created_at, updated_at)
+                 VALUES ('t1', 'local', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+             INSERT INTO events (id, title, start_at, all_day, created_at, updated_at)
+                 VALUES ('e1', 'private', '2026-01-01', 1,
+                         '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');",
+        )
+        .unwrap();
+
+        let user_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+        use_account_data_inner(&mut conn, user_id).unwrap();
+
+        assert!(!has_local_sync_data(&conn).unwrap());
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM events", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(settings::read(&conn, OWNER_KEY).as_deref(), Some(user_id));
     }
 
     #[test]

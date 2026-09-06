@@ -1,20 +1,15 @@
 import { create } from "zustand";
 import type { Session } from "@supabase/supabase-js";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { supabase, syncConfigured } from "./supabase";
-import { parseOAuthCallback } from "./authOAuth";
 
 type AuthResult = { ok: true } | { ok: false; error: string };
 
-const OAUTH_REDIRECT = "todofy://auth-callback";
+const OAUTH_REDIRECT = "http://127.0.0.1:3369/auth-callback";
 
-async function completeOAuth(rawUrl: string) {
-  const code = parseOAuthCallback(rawUrl);
-  if (!code) return;
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
-  if (error) throw error;
+interface OAuthCallback {
+  code: string;
+  attemptId: string;
 }
 
 interface AuthState {
@@ -53,11 +48,6 @@ export const useAuth = create<AuthState>((set) => ({
     supabase.auth.onAuthStateChange((_event, session) => {
       set({ session, email: session?.user.email ?? null });
     });
-    listen<string>("deep-link", (e) => {
-      void completeOAuth(e.payload).catch((error) => {
-        console.error("Could not complete Google sign-in:", error);
-      });
-    });
   },
 
   signIn: async (email, password) => {
@@ -82,7 +72,36 @@ export const useAuth = create<AuthState>((set) => ({
       options: { redirectTo: OAUTH_REDIRECT, skipBrowserRedirect: true },
     });
     if (error) return { ok: false, error: error.message };
-    if (data.url) await openUrl(data.url);
+    if (!data.url) return { ok: false, error: "Supabase did not return a Google sign-in URL." };
+
+    let callback: OAuthCallback;
+    try {
+      callback = await invoke<OAuthCallback>("supabase_oauth_flow", { authUrl: data.url });
+    } catch (error) {
+      return { ok: false, error: String(error) };
+    }
+
+    let exchangeError: string | null = null;
+    try {
+      const { error } = await supabase.auth.exchangeCodeForSession(callback.code);
+      exchangeError = error?.message ?? null;
+    } catch (error) {
+      exchangeError = error instanceof Error ? error.message : String(error);
+    }
+
+    try {
+      await invoke("supabase_oauth_finish", {
+        attemptId: callback.attemptId,
+        error: exchangeError,
+      });
+    } catch (error) {
+      console.error("Could not finish the Google sign-in browser response:", error);
+      if (!exchangeError) {
+        return { ok: false, error: "Signed in, but could not close the browser callback cleanly." };
+      }
+    }
+
+    if (exchangeError) return { ok: false, error: exchangeError };
     return { ok: true };
   },
 

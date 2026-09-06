@@ -19,6 +19,7 @@ import { ConfirmDialog } from "./components/ConfirmDialog";
 import { FocusWidget } from "./components/FocusWidget";
 import { ShortcutsOverlay } from "./components/ShortcutsOverlay";
 import { Celebration } from "./components/Celebration";
+import { SyncAccountDialog } from "./components/SyncAccountDialog";
 
 export function App() {
   const load = useStore((s) => s.load);
@@ -127,6 +128,7 @@ export function App() {
       <FocusWidget />
       <ReminderToasts />
       <ConfirmDialog />
+      <SyncAccountDialog />
       <ShortcutsOverlay />
       <Celebration />
       <ContextMenu appItems={menuActions} />

@@ -1,3 +1,4 @@
+mod auth_oauth;
 mod calendar;
 mod commands;
 mod db;
@@ -32,6 +33,7 @@ const AUTOSTART_FLAG: &str = "--autostart";
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(auth_oauth::SupabaseOAuthState::default())
         // Must be the FIRST plugin: if todofy is already running, a second
         // launch focuses the existing window instead of starting a new one.
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
@@ -178,12 +180,19 @@ pub fn run() {
             sync::sync_get_watermark,
             sync::sync_set_watermark,
             sync::sync_reset,
+            sync::sync_get_owner,
+            sync::sync_has_local_data,
+            sync::sync_claim_owner,
+            sync::sync_use_account_data,
+            sync::sync_copy_local_data,
             sync::wipe_local_data,
             sync::sync_purge_tombstones,
             secret::secret_get,
             secret::secret_set,
             secret::secret_delete,
             google_calendar::google_oauth_flow,
+            auth_oauth::supabase_oauth_flow,
+            auth_oauth::supabase_oauth_finish,
             calendar::calendar_pending,
             calendar::calendar_link_set,
             calendar::calendar_link_remove,

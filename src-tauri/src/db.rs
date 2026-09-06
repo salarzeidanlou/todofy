@@ -283,6 +283,31 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         conn.execute("DELETE FROM events WHERE source = 'google'", [])?;
     }
 
+    // Repair rows left by older builds that soft-deleted a parent without
+    // tombstoning its children. Stamp them now so the next sync sends deletion
+    // markers instead of trying to insert children whose cloud parent is gone.
+    conn.execute_batch(
+        "
+        UPDATE task_labels
+           SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+               updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+         WHERE deleted_at IS NULL
+           AND (
+             EXISTS (SELECT 1 FROM tasks t
+                     WHERE t.id = task_labels.task_id AND t.deleted_at IS NOT NULL)
+             OR EXISTS (SELECT 1 FROM labels l
+                        WHERE l.id = task_labels.label_id AND l.deleted_at IS NOT NULL)
+           );
+
+        UPDATE time_sessions
+           SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+               updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+         WHERE deleted_at IS NULL
+           AND EXISTS (SELECT 1 FROM tasks t
+                       WHERE t.id = time_sessions.task_id AND t.deleted_at IS NOT NULL);
+        ",
+    )?;
+
     Ok(())
 }
 
@@ -787,5 +812,36 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM tasks", [], |r| r.get(0))
             .unwrap();
         assert_eq!((live, total), (0, 1));
+    }
+
+    #[test]
+    fn init_repairs_live_children_of_deleted_parents() {
+        let conn = Connection::open_in_memory().unwrap();
+        init(&conn).unwrap();
+        conn.execute_batch(
+            "INSERT INTO labels (id, name, color, updated_at)
+                 VALUES ('l1', 'home', '#fff', '2026-01-01T00:00:00Z');
+             INSERT INTO tasks (id, title, created_at, updated_at, deleted_at)
+                 VALUES ('t1', 'gone', '2026-01-01T00:00:00Z',
+                         '2026-02-01T00:00:00Z', '2026-02-01T00:00:00Z');
+             INSERT INTO task_labels (task_id, label_id, updated_at)
+                 VALUES ('t1', 'l1', '2026-01-01T00:00:00Z');
+             INSERT INTO time_sessions (id, task_id, start_at, updated_at)
+                 VALUES ('s1', 't1', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');",
+        )
+        .unwrap();
+
+        init(&conn).unwrap();
+
+        for table in ["task_labels", "time_sessions"] {
+            let repaired: i64 = conn
+                .query_row(
+                    &format!("SELECT COUNT(*) FROM {table} WHERE deleted_at IS NOT NULL"),
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(repaired, 1, "{table} was not repaired");
+        }
     }
 }

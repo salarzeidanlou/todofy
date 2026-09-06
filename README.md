@@ -47,7 +47,7 @@ Plan tasks and local events, stay focused with timers and reminders, optionally 
 - ⌨️ **Keyboard‑first** — add, navigate, complete, and edit without touching the mouse
 - 🪟 **System tray** — closes to tray and keeps running so reminders never miss; start/pause the Pomodoro, stop the task timer, and watch the live countdown right from the tray
 - 🧭 **Date-oriented navigation** — move between smart views from the top navigation bar and use the day rail to jump through your schedule
-- ☁️ **Optional account sync** — sign in with an email and password or **Continue with Google** to sync your tasks, labels, focus history, and journal across devices (backed by Supabase, with row‑level security). Sessions are kept in your OS secret store, and the whole thing is opt‑in
+- ☁️ **Optional account sync** — sign in with an email and password or **Continue with Google** to sync your tasks, labels, focus history, and journal across devices (backed by Supabase, with row‑level security). Sessions are kept in your OS secret store, and the whole thing is opt‑in. If you switch accounts on one installation, Todofy pauses before syncing and lets you load the new account's cloud data or safely copy the current device data into it with new record IDs
 - 🗓️ **Local calendar** — plan in month, week, or day views, with tasks on their due dates and standalone all-day or timed events you can create and edit. Standalone events stay on this device and are not included in account sync or pushed to Google
 - 📅 **Google Calendar sync** — push your dated tasks to a dedicated **todofy** calendar (one‑way) so they sit right beside your meetings: all‑day for date‑only tasks, timed for tasks with a reminder. Recurring tasks move as they roll, completed and deleted tasks tidy themselves up, and you can keep finished tasks or limit the push to timed tasks only. Opt‑in, gated behind account sign‑in
 - 🗑️ **Delete your account** — remove your current account and all of its cloud data whenever you like, and optionally wipe the copy on this device too. You can register a fresh account later with the same email address
@@ -203,7 +203,7 @@ Sync is **off by default** — todofy is local‑first and works fully offline w
 
    The edge runtime provides the service-role key automatically — no secrets to configure.
 
-5. **(Optional) Enable Google sign-in.** In the [Google Cloud Console](https://console.cloud.google.com), create an OAuth client of type **Web application** and add your Supabase callback (`https://<your-project-ref>.supabase.co/auth/v1/callback`) as an authorized redirect URI. Paste the client ID and secret into **Supabase → Authentication → Providers → Google**, then add `todofy://auth-callback` under **Authentication → URL Configuration → Redirect URLs**. The app opens the system browser and returns through its `todofy://` deep link.
+5. **(Optional) Enable Google sign-in.** In the [Google Cloud Console](https://console.cloud.google.com), create an OAuth client of type **Web application** and add your Supabase callback (`https://<your-project-ref>.supabase.co/auth/v1/callback`) as an authorized redirect URI. Paste the client ID and secret into **Supabase → Authentication → Providers → Google**, then add the exact URL `http://127.0.0.1:3369/auth-callback` under **Supabase → Authentication → URL Configuration → Redirect URLs**. Do not add this loopback URL to the Google Cloud OAuth client; Google redirects to Supabase, and Supabase redirects back to Todofy. Todofy starts the local listener before opening the system browser, completes the PKCE code exchange, and then shows a success or error page with a **Back to Todofy** button. Port `3369` must be available while sign-in is running.
 
 6. **(Optional) Enable Google Calendar sync.** In the [Google Cloud Console](https://console.cloud.google.com), enable the **Google Calendar API** and create a second OAuth client of type **Desktop app**. Add its client ID and secret to your `.env`:
 
@@ -257,6 +257,7 @@ todofy/
 │       ├── popup.rs        # custom corner notification window
 │       ├── tray.rs         # system tray + live timer controls
 │       ├── sync.rs         # account-sync merge (push/pull, last-write-wins)
+│       ├── auth_oauth.rs    # Supabase Google sign-in loopback callback (PKCE)
 │       ├── google_calendar.rs # Google OAuth loopback listener (desktop PKCE)
 │       ├── calendar.rs     # one-way Google Calendar task-push diff + poll thread
 │       ├── secret.rs       # OS keychain access for the session
@@ -306,5 +307,5 @@ the [LICENSE](LICENSE) for the full terms.
 ---
 
 <div align="center">
-Made with ❤️ and Rust, for Linux.
+Made with ❤️ and Rust for Linux, macOS, and Windows.
 </div>

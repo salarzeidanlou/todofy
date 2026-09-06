@@ -4,10 +4,22 @@
 
 ### Added
 
-- **Sign in with Google** — sign in or sign up with your Google account straight from the Account modal, alongside the existing email and password. Authentication opens in your system browser and returns to the app through a `todofy://` deep link, so it works the same as any native desktop sign‑in. Self‑hosters enable it by adding a Google OAuth provider in Supabase (see the README)
+- **Sign in with Google** — sign in or sign up with your Google account straight from the Account modal, alongside the existing email and password. Authentication opens in your system browser and returns through a PKCE-protected loopback callback on `127.0.0.1`; the browser shows a clear success or error page only after Todofy finishes creating the session, with a button to return to the app. Self-hosters enable it by adding a Google OAuth provider in Supabase (see the README)
 - **Delete your account** — a new option in **Settings → Account** permanently deletes your account and all of its cloud data, with a clear type‑to‑confirm step and an optional checkbox to also wipe the copy stored on this device. Deleting the account cascades to every synced table, so nothing is left behind. Self‑hosters deploy the new `delete-account` edge function
 - **Local calendar** — a new Calendar workspace brings month, week, and day views to todofy. Tasks appear on their due dates, and standalone all-day or timed events can be created, edited, and deleted directly in the calendar. Standalone events stay private to this device and are not included in account sync or pushed to Google
 - **Google Calendar sync** — connect Google Calendar in **Settings → Calendar** to push your tasks one‑way to a dedicated **todofy** calendar, so dated tasks show up next to your meetings. Tasks with a due date become all‑day events and tasks with a reminder become timed events; recurring tasks move as they roll forward, and deleting or un‑dating a task removes its event. By default completing a task clears its event, with a toggle to keep finished tasks (marked with a ✓) and another to push only tasks that have a set time. Disconnecting can optionally delete the todofy calendar and its events. Sign‑in uses Google's desktop loopback flow with PKCE and the narrow `calendar.app.created` scope, so todofy only ever touches the calendar it creates; tokens live in your OS secret store. It's opt‑in and gated behind account sign‑in. Self‑hosters enable the Google Calendar API and add a **Desktop app** OAuth client (see the README)
+
+### Changed
+
+- **Safe account switching** — Todofy now records which account owns the local sync data. When a different account signs in on the same installation, sync pauses and asks whether to load that account's cloud data or copy the current device data into it. Copying generates new UUIDs for the local sync graph so row-level security remains intact and records owned by the previous account are never overwritten
+
+### Fixed
+
+- Google account sign-in no longer gets stuck after a successful browser authorization in packaged builds. Todofy now owns the fixed `http://127.0.0.1:3369/auth-callback` listener, exchanges the returned code with Supabase, reports the real result in the browser, and reliably clears the in-app loading state
+- Account sync no longer uploads active label assignments or focus sessions whose parent task or label has been deleted. Task and label deletion now tombstones dependent rows atomically, legacy orphaned rows are repaired at startup, and a final upload filter prevents foreign-key failures
+- Signing in with another account no longer attempts to upsert local UUIDs already owned by the previous Supabase user, preventing the resulting `labels` row-level-security error without weakening RLS policies
+- **Wipe local data** now removes standalone calendar events along with tasks, labels, focus sessions, and journal entries
+- Timed standalone events now require their end time to be later than their start time
 
 ## v1.8.0 — 2026-09-02
 

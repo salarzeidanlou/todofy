@@ -298,14 +298,31 @@ pub fn toggle_task(db: State<Db>, id: String, done: bool) -> CmdResult<Task> {
 
 #[tauri::command]
 pub fn delete_task(db: State<Db>, id: String) -> CmdResult<()> {
-    let conn = db.conn();
+    let mut conn = db.conn();
     let now = now_iso();
-    conn.execute(
+    delete_task_inner(&mut conn, &id, &now).map_err(|e| e.to_string())
+}
+
+fn delete_task_inner(conn: &mut Connection, id: &str, now: &str) -> rusqlite::Result<()> {
+    let tx = conn.transaction()?;
+    // Tombstone dependants in the same transaction as their task. Leaving a
+    // live child behind makes the next cloud push violate its foreign key when
+    // the deleted parent is represented only by a sync tombstone.
+    tx.execute(
+        "UPDATE task_labels SET deleted_at = ?1, updated_at = ?1
+         WHERE task_id = ?2 AND deleted_at IS NULL",
+        params![now, id],
+    )?;
+    tx.execute(
+        "UPDATE time_sessions SET deleted_at = ?1, updated_at = ?1
+         WHERE task_id = ?2 AND deleted_at IS NULL",
+        params![now, id],
+    )?;
+    tx.execute(
         "UPDATE tasks SET deleted_at = ?1, updated_at = ?1 WHERE id = ?2",
         params![now, id],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    )?;
+    tx.commit()
 }
 
 #[tauri::command]
@@ -365,14 +382,23 @@ pub fn update_label(db: State<Db>, id: String, name: String, color: String) -> C
 
 #[tauri::command]
 pub fn delete_label(db: State<Db>, id: String) -> CmdResult<()> {
-    let conn = db.conn();
+    let mut conn = db.conn();
     let now = now_iso();
-    conn.execute(
+    delete_label_inner(&mut conn, &id, &now).map_err(|e| e.to_string())
+}
+
+fn delete_label_inner(conn: &mut Connection, id: &str, now: &str) -> rusqlite::Result<()> {
+    let tx = conn.transaction()?;
+    tx.execute(
+        "UPDATE task_labels SET deleted_at = ?1, updated_at = ?1
+         WHERE label_id = ?2 AND deleted_at IS NULL",
+        params![now, id],
+    )?;
+    tx.execute(
         "UPDATE labels SET deleted_at = ?1, updated_at = ?1 WHERE id = ?2",
         params![now, id],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    )?;
+    tx.commit()
 }
 
 fn load_journal(conn: &Connection, id: &str) -> rusqlite::Result<JournalEntry> {
@@ -625,8 +651,10 @@ pub fn delete_event(db: State<Db>, id: String) -> CmdResult<()> {
 }
 
 #[cfg(test)]
-mod event_tests {
-    use super::validate_event_range;
+mod command_tests {
+    use super::{delete_label_inner, delete_task_inner, validate_event_range};
+    use crate::db;
+    use rusqlite::Connection;
 
     #[test]
     fn timed_event_end_must_follow_start() {
@@ -635,5 +663,42 @@ mod event_tests {
         assert!(validate_event_range(false, Some(start), Some(start)).is_err());
         assert!(validate_event_range(false, Some(start), Some("2026-09-06T09:00:00Z")).is_err());
         assert!(validate_event_range(true, Some(start), Some(start)).is_ok());
+    }
+
+    #[test]
+    fn deleting_parents_tombstones_sync_children_atomically() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        conn.execute_batch(
+            "INSERT INTO labels (id, name, color, updated_at)
+                 VALUES ('l1', 'home', '#fff', '2026-01-01T00:00:00Z');
+             INSERT INTO tasks (id, title, created_at, updated_at)
+                 VALUES ('t1', 'task', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
+                        ('t2', 'task', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+             INSERT INTO task_labels (task_id, label_id, updated_at)
+                 VALUES ('t1', 'l1', '2026-01-01T00:00:00Z'),
+                        ('t2', 'l1', '2026-01-01T00:00:00Z');
+             INSERT INTO time_sessions (id, task_id, start_at, updated_at)
+                 VALUES ('s1', 't1', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');",
+        )
+        .unwrap();
+
+        let deleted_at = "2026-09-06T20:00:00Z";
+        delete_task_inner(&mut conn, "t1", deleted_at).unwrap();
+        delete_label_inner(&mut conn, "l1", deleted_at).unwrap();
+
+        for (table, predicate) in [
+            ("tasks", "id = 't1'"),
+            ("labels", "id = 'l1'"),
+            ("task_labels", "task_id IN ('t1', 't2')"),
+            ("time_sessions", "id = 's1'"),
+        ] {
+            let sql = format!("SELECT COUNT(*) FROM {table} WHERE {predicate} AND deleted_at = ?1");
+            let count: i64 = conn
+                .query_row(&sql, [deleted_at], |row| row.get(0))
+                .unwrap();
+            let expected = if table == "task_labels" { 2 } else { 1 };
+            assert_eq!(count, expected, "{table} was not tombstoned");
+        }
     }
 }
