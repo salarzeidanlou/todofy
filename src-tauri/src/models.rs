@@ -46,6 +46,7 @@ pub struct Task {
     pub pinned: bool,
     /// Recurrence rule: daily|weekdays|weekly|monthly|yearly, or None.
     pub repeat: Option<String>,
+    pub estimate_minutes: Option<i64>,
     /// Total focused seconds from completed stopwatch sessions.
     pub tracked_seconds: i64,
     /// Label ids attached to this task.
@@ -65,6 +66,7 @@ pub struct NewTask {
     pub priority: Option<i64>,
     pub label_ids: Option<Vec<String>>,
     pub repeat: Option<String>,
+    pub estimate_minutes: Option<i64>,
 }
 
 /// Payload for updating a task. `id` required; provided fields are applied.
@@ -87,6 +89,9 @@ pub struct TaskPatch {
     pub repeat: Option<Option<String>>,
     /// When present, replaces the whole checklist (like `label_ids`).
     pub subtasks: Option<Vec<Subtask>>,
+    /// `Some(None)` clears the estimate; `Some(Some(minutes))` sets it.
+    #[serde(default, deserialize_with = "double_option")]
+    pub estimate_minutes: Option<Option<i64>>,
 }
 
 /// A free-form journal entry. Grouped by `entry_date` for the calendar rail.
@@ -163,13 +168,18 @@ pub struct EventPatch {
     pub all_day: Option<bool>,
 }
 
-/// The currently running per-task stopwatch, if any.
+/// The open per-task stopwatch. Elapsed time is `accumulated` plus, while
+/// running, the seconds since `resumed_at`; a null `resumed_at` means paused.
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ActiveTimer {
     pub task_id: String,
     pub title: String,
     pub start_at: String,
+    pub resumed_at: Option<String>,
+    pub accumulated: i64,
+    // Carried along so the tray can flag an overrun without a second query.
+    pub estimate_minutes: Option<i64>,
 }
 
 /// A completed focus session, for the history view.

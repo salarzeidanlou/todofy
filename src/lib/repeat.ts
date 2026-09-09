@@ -1,10 +1,13 @@
 import type { RepeatRule } from "../types";
 
-/** Selectable recurrence options, in menu order. `null` = does not repeat. */
+/**
+ * Selectable recurrence options, in menu order. `null` = does not repeat.
+ * Labels are kept short for the date picker's chip row.
+ */
 export const REPEAT_OPTIONS: { value: RepeatRule | null; label: string }[] = [
-  { value: null, label: "Does not repeat" },
+  { value: null, label: "Never" },
   { value: "daily", label: "Daily" },
-  { value: "weekdays", label: "Every weekday" },
+  { value: "weekdays", label: "Weekdays" },
   { value: "weekly", label: "Weekly" },
   { value: "monthly", label: "Monthly" },
   { value: "yearly", label: "Yearly" },

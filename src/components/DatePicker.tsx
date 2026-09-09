@@ -1,13 +1,21 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { formatDue, formatTime, toLocalDate, today } from "../lib/dates";
-import { BellIcon, CalendarIcon } from "./Icons";
+import { BellIcon, CalendarIcon, RepeatIcon } from "./Icons";
+import { TimeField } from "./TimeField";
+import { weekdayNames, weekdayOffset } from "../lib/locale";
+import { api } from "../lib/api";
+import {
+  DEFAULT_QUICK_TIMES,
+  parseQuickTimes,
+  QUICK_TIMES_KEY,
+} from "../lib/quickTimes";
+import { REPEAT_OPTIONS } from "../lib/repeat";
+import type { RepeatRule } from "../types";
 
-const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 const MONTHS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
-const QUICK_TIMES = ["09:00", "12:00", "18:00"];
 const POPOVER_W = 268;
 const YEARS_PER_PAGE = 12;
 const MARGIN = 8;
@@ -37,6 +45,9 @@ interface Props {
   /** The stored reminder instant; enables snooze chips when it's in the past. */
   reminderAt?: string | null;
   onSnooze?: (minutes: number) => void;
+  /** When provided, recurrence is set here rather than in a separate control. */
+  repeat?: RepeatRule | null;
+  onRepeatChange?: (rule: RepeatRule | null) => void;
 }
 
 export function DatePicker({
@@ -48,9 +59,12 @@ export function DatePicker({
   onTimeChange,
   reminderAt,
   onSnooze,
+  repeat,
+  onRepeatChange,
 }: Props) {
   const withTime = !!onTimeChange;
   const [open, setOpen] = useState(false);
+  const [quickTimes, setQuickTimes] = useState(DEFAULT_QUICK_TIMES);
   const [mode, setMode] = useState<Mode>("days");
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const [month, setMonth] = useState(() =>
@@ -88,6 +102,16 @@ export function DatePicker({
     );
     setPos({ top, left });
   }, [open, mode]);
+
+  // Re-read on each open so a change made in Settings takes effect without a
+  // restart; the values live in SQLite, which both windows share.
+  useEffect(() => {
+    if (!open || !withTime) return;
+    api
+      .getSetting(QUICK_TIMES_KEY)
+      .then((stored) => setQuickTimes(parseQuickTimes(stored)))
+      .catch(() => {});
+  }, [open, withTime]);
 
   useEffect(() => {
     if (!open) return;
@@ -127,10 +151,11 @@ export function DatePicker({
 
   const label = (() => {
     if (!value) return placeholder;
+    // The time is appended here, so the bare label is used to avoid repeating it.
     const base = formatDue(value).label;
     return time ? `${base}, ${formatTime(time)}` : base;
   })();
-  const tone = value ? formatDue(value).tone : null;
+  const tone = value ? formatDue(value, reminderAt).tone : null;
 
   return (
     <>
@@ -154,8 +179,15 @@ export function DatePicker({
       {open && (
         <div
           ref={ref}
-          style={{ position: "fixed", top: `${pos.top}px`, left: `${pos.left}px`, width: `${POPOVER_W}px` }}
-          class="z-50 animate-fade-rise rounded-xl border border-[var(--color-border-strong)] bg-[var(--color-elevated)] p-2.5 shadow-2xl shadow-black/50"
+          style={{
+            position: "fixed",
+            top: `${pos.top}px`,
+            left: `${pos.left}px`,
+            width: `${POPOVER_W}px`,
+            // Shortcuts, calendar, time and repeat can outgrow a short window.
+            maxHeight: `calc(100vh - ${MARGIN * 2}px)`,
+          }}
+          class="z-50 animate-fade-rise overflow-y-auto rounded-xl border border-[var(--color-border-strong)] bg-[var(--color-elevated)] p-2.5 shadow-2xl shadow-black/50"
         >
           {/* Quick shortcuts */}
           <div class="mb-2 flex flex-col gap-0.5">
@@ -287,7 +319,7 @@ export function DatePicker({
                 )}
               </div>
               <div class="flex items-center gap-1.5 px-0.5">
-                {QUICK_TIMES.map((t) => (
+                {quickTimes.map((t) => (
                   <button
                     key={t}
                     type="button"
@@ -301,11 +333,10 @@ export function DatePicker({
                     {formatTime(t)}
                   </button>
                 ))}
-                <input
-                  type="time"
-                  value={time ?? ""}
-                  onInput={(e) => setTime(e.currentTarget.value || null)}
-                  class="ml-auto rounded-md bg-[var(--color-bg)] px-2 py-1 text-xs outline-none [color-scheme:dark] focus:ring-1 focus:ring-[var(--color-accent)]"
+                <TimeField
+                  value={time || null}
+                  onChange={setTime}
+                  onDone={() => setOpen(false)}
                 />
               </div>
 
@@ -335,6 +366,31 @@ export function DatePicker({
                     ))}
                   </div>
                 )}
+            </div>
+          )}
+
+          {onRepeatChange && (
+            <div class="mt-2 border-t border-[var(--color-border)] pt-2">
+              <div class="mb-1.5 flex items-center gap-1.5 px-0.5 text-xs text-[var(--color-muted)]">
+                <RepeatIcon width={13} height={13} />
+                Repeat
+              </div>
+              <div class="flex flex-wrap gap-1 px-0.5">
+                {REPEAT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value ?? "none"}
+                    type="button"
+                    onClick={() => onRepeatChange(opt.value)}
+                    class={`rounded-md px-2 py-1 text-xs transition-colors ${
+                      (repeat ?? null) === opt.value
+                        ? "bg-[var(--color-accent)] text-white"
+                        : "bg-[var(--color-surface-2)] text-[var(--color-muted)] hover:text-[var(--color-text)]"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -371,7 +427,7 @@ function DayGrid({
   onPick: (d: string) => void;
 }) {
   const first = new Date(month.getFullYear(), month.getMonth(), 1);
-  const offset = first.getDay();
+  const offset = weekdayOffset(first);
   const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
   const cells: (string | null)[] = [];
   for (let i = 0; i < offset; i++) cells.push(null);
@@ -381,8 +437,8 @@ function DayGrid({
   return (
     <>
       <div class="grid grid-cols-7 text-center text-[10px] font-medium text-[var(--color-faint)]">
-        {WEEKDAYS.map((w, i) => (
-          <span key={i} class="py-1">{w}</span>
+        {weekdayNames("narrow").map((w) => (
+          <span key={w.index} class="py-1">{w.label}</span>
         ))}
       </div>
       <div class="grid grid-cols-7 gap-0.5">

@@ -6,7 +6,7 @@ use crate::models::{
 use crate::recur;
 use chrono::{DateTime, Local};
 use rusqlite::{params, Connection};
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 type CmdResult<T> = Result<T, String>;
 
@@ -61,7 +61,7 @@ fn load_task(conn: &Connection, id: &str) -> rusqlite::Result<Task> {
                 (SELECT COALESCE(SUM(seconds), 0) FROM time_sessions
                  WHERE task_id = tasks.id AND end_at IS NOT NULL
                    AND deleted_at IS NULL),
-                subtasks
+                subtasks, estimate_minutes
          FROM tasks WHERE id = ?1",
         [id],
         |r| {
@@ -79,6 +79,7 @@ fn load_task(conn: &Connection, id: &str) -> rusqlite::Result<Task> {
                 order_index: r.get(9)?,
                 pinned: r.get(10)?,
                 repeat: r.get(11)?,
+                estimate_minutes: r.get(14)?,
                 tracked_seconds: r.get(12)?,
                 label_ids: Vec::new(),
                 // Tolerate a NULL or malformed column as an empty checklist.
@@ -142,8 +143,8 @@ pub fn create_task(db: State<Db>, task: NewTask) -> CmdResult<Task> {
     let created = now_iso();
     let id = new_uuid();
     conn.execute(
-        "INSERT INTO tasks (id, title, notes, due_date, remind_at, priority, created_at, order_index, repeat, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        "INSERT INTO tasks (id, title, notes, due_date, remind_at, priority, created_at, order_index, repeat, estimate_minutes, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
             id,
             task.title.trim(),
@@ -154,6 +155,7 @@ pub fn create_task(db: State<Db>, task: NewTask) -> CmdResult<Task> {
             created,
             Local::now().timestamp_millis() as f64,
             task.repeat,
+            task.estimate_minutes.filter(|m| *m > 0),
             created,
         ],
     )
@@ -189,9 +191,11 @@ pub fn update_task(db: State<Db>, patch: TaskPatch) -> CmdResult<Task> {
         .map_err(|e| e.to_string())?;
     }
     if let Some(remind) = &patch.remind_at {
-        // Changing the reminder re-arms the notification.
+        // Re-arms the notification, including its repeat count and the
+        // answer that had stopped it.
         conn.execute(
-            "UPDATE tasks SET remind_at = ?1, notified = 0 WHERE id = ?2",
+            "UPDATE tasks SET remind_at = ?1, notified = 0, last_notified_at = NULL,
+                    reminder_ack_at = NULL WHERE id = ?2",
             params![remind, patch.id],
         )
         .map_err(|e| e.to_string())?;
@@ -221,6 +225,15 @@ pub fn update_task(db: State<Db>, patch: TaskPatch) -> CmdResult<Task> {
         )
         .map_err(|e| e.to_string())?;
     }
+    if let Some(estimate) = patch.estimate_minutes {
+        // `Some(None)` clears the estimate; a non-positive value is treated the
+        // same way, so the UI can clear it without a separate call.
+        conn.execute(
+            "UPDATE tasks SET estimate_minutes = ?1 WHERE id = ?2",
+            params![estimate.filter(|m| *m > 0), patch.id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
     if let Some(subtasks) = &patch.subtasks {
         // Replace the whole checklist. An empty list is stored as `[]`.
         let json = serde_json::to_string(subtasks).map_err(|e| e.to_string())?;
@@ -231,6 +244,49 @@ pub fn update_task(db: State<Db>, patch: TaskPatch) -> CmdResult<Task> {
         .map_err(|e| e.to_string())?;
     }
     touch_and_load(&conn, &patch.id).map_err(|e| e.to_string())
+}
+
+/// Stop a reminder repeating. Called when a notification is opened, dismissed
+/// by hand or snoozed, and when a timer is started on the task.
+///
+/// Deliberately not called when a popup times out unseen — counting that as an
+/// answer would defeat the feature.
+pub fn acknowledge_reminder_inner(conn: &Connection, id: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE tasks SET reminder_ack_at = ?1 WHERE id = ?2 AND reminder_ack_at IS NULL",
+        params![now_iso(), id],
+    )?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn acknowledge_reminder(db: State<Db>, id: String) -> CmdResult<()> {
+    acknowledge_reminder_inner(&db.conn(), &id).map_err(|e| e.to_string())
+}
+
+/// Push a task's reminder `minutes` into the future, moving its due date to
+/// match so it lands in the view its new time belongs to.
+///
+/// This lives in the backend rather than the main window's store because the
+/// notification popup is a separate webview with no access to it — snoozing
+/// straight from the notification is the whole point. Writing `remind_at`
+/// resets `notified`, so the reminder fires again when it comes due.
+#[tauri::command]
+pub fn snooze_task(app: AppHandle, db: State<Db>, id: String, minutes: i64) -> CmdResult<Task> {
+    let when = Local::now() + chrono::Duration::minutes(minutes.max(1));
+    let task = {
+        let conn = db.conn();
+        conn.execute(
+            "UPDATE tasks SET remind_at = ?1, due_date = ?2, notified = 0,
+                    last_notified_at = NULL, reminder_ack_at = NULL WHERE id = ?3",
+            params![when.to_rfc3339(), when.format("%Y-%m-%d").to_string(), id],
+        )
+        .map_err(|e| e.to_string())?;
+        touch_and_load(&conn, &id).map_err(|e| e.to_string())?
+    };
+    // The main window holds tasks in memory; tell it to re-read them.
+    let _ = app.emit("tasks-changed", ());
+    Ok(task)
 }
 
 /// Set a task's manual order position. The frontend computes `order_index`
@@ -273,7 +329,8 @@ pub fn toggle_task(db: State<Db>, id: String, done: bool) -> CmdResult<Task> {
                     .as_deref()
                     .and_then(|r| recur::advance_remind(r, rule));
                 conn.execute(
-                    "UPDATE tasks SET due_date = ?1, remind_at = ?2, notified = 0 WHERE id = ?3",
+                    "UPDATE tasks SET due_date = ?1, remind_at = ?2, notified = 0,
+                            last_notified_at = NULL, reminder_ack_at = NULL WHERE id = ?3",
                     params![next_due, next_remind, id],
                 )
                 .map_err(|e| e.to_string())?;
@@ -652,7 +709,9 @@ pub fn delete_event(db: State<Db>, id: String) -> CmdResult<()> {
 
 #[cfg(test)]
 mod command_tests {
-    use super::{delete_label_inner, delete_task_inner, validate_event_range};
+    use super::{
+        acknowledge_reminder_inner, delete_label_inner, delete_task_inner, validate_event_range,
+    };
     use crate::db;
     use rusqlite::Connection;
 
@@ -663,6 +722,83 @@ mod command_tests {
         assert!(validate_event_range(false, Some(start), Some(start)).is_err());
         assert!(validate_event_range(false, Some(start), Some("2026-09-06T09:00:00Z")).is_err());
         assert!(validate_event_range(true, Some(start), Some(start)).is_ok());
+    }
+
+    /// A second answer must not move the timestamp.
+    #[test]
+    fn acknowledging_a_reminder_records_it_once() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO tasks (id, title, created_at, updated_at, notified)
+             VALUES ('t1', 'call the bank', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 2)",
+            [],
+        )
+        .unwrap();
+
+        let ack = |c: &Connection| -> Option<String> {
+            c.query_row(
+                "SELECT reminder_ack_at FROM tasks WHERE id = 't1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(ack(&conn), None, "not answered yet");
+
+        acknowledge_reminder_inner(&conn, "t1").unwrap();
+        let first = ack(&conn).expect("answering must be recorded");
+
+        acknowledge_reminder_inner(&conn, "t1").unwrap();
+        assert_eq!(ack(&conn), Some(first), "answering twice changes nothing");
+    }
+
+    /// Upgrading must not turn every reminder ever fired into an unanswered one.
+    #[test]
+    fn existing_reminders_are_treated_as_already_answered() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        // The pre-repeat table shape, with one task in each state.
+        conn.execute_batch(
+            "
+            DROP TABLE tasks;
+            CREATE TABLE tasks (
+                id           TEXT PRIMARY KEY,
+                title        TEXT NOT NULL,
+                notes        TEXT,
+                due_date     TEXT,
+                remind_at    TEXT,
+                status       TEXT NOT NULL DEFAULT 'active',
+                priority     INTEGER NOT NULL DEFAULT 4,
+                created_at   TEXT NOT NULL,
+                completed_at TEXT,
+                order_index  REAL NOT NULL DEFAULT 0,
+                notified     INTEGER NOT NULL DEFAULT 0,
+                pinned       INTEGER NOT NULL DEFAULT 0,
+                repeat       TEXT,
+                subtasks     TEXT,
+                updated_at   TEXT NOT NULL,
+                deleted_at   TEXT
+            );
+            INSERT INTO tasks (id, title, created_at, updated_at, notified)
+                 VALUES ('fired', 'old reminder', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 1),
+                        ('waiting', 'not yet', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 0);
+            ",
+        )
+        .unwrap();
+
+        db::init(&conn).unwrap();
+
+        let ack = |id: &str| -> Option<String> {
+            conn.query_row(
+                "SELECT reminder_ack_at FROM tasks WHERE id = ?1",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        assert!(ack("fired").is_some(), "already-fired reminders stay quiet");
+        assert_eq!(ack("waiting"), None, "a pending reminder can still fire");
     }
 
     #[test]

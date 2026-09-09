@@ -9,6 +9,12 @@ import {
 } from "./lib/dates";
 import { sectionsForView } from "./lib/grouping";
 import { applyTheme, initialTheme, type Theme } from "./lib/theme";
+import {
+  setTimeFormat,
+  setWeekStart,
+  type TimeFormatPref,
+  type WeekStartPref,
+} from "./lib/locale";
 import type {
   ActiveReminder,
   ActiveTimer,
@@ -23,6 +29,7 @@ import type {
   Pomodoro,
   Task,
   TaskPatch,
+  TaskTimerMode,
   ViewId,
 } from "./types";
 
@@ -42,6 +49,7 @@ interface State {
   view: ViewId;
   selectedId: string | null;
   loading: boolean;
+  loadError: string | null;
   reminders: ActiveReminder[];
   theme: Theme;
   confirm: ConfirmOptions | null;
@@ -53,8 +61,18 @@ interface State {
   activeTimer: ActiveTimer | null;
   pomodoro: Pomodoro | null;
   showFocus: boolean;
+  taskTimerMode: TaskTimerMode;
+  setTaskTimerMode: (mode: TaskTimerMode) => Promise<void>;
 
   showShortcuts: boolean;
+  /**
+   * Bumped whenever the clock or week-start convention changes. The resolved
+   * values live in `lib/locale` so the pure date formatters can read them
+   * without hooks; this counter is what tells the UI to repaint.
+   */
+  localeVersion: number;
+  setTimeFormat: (pref: TimeFormatPref) => Promise<void>;
+  setWeekStart: (pref: WeekStartPref) => Promise<void>;
   /** Bumped to a timestamp each time a task is completed, to fire a celebration. */
   celebrationAt: number | null;
   /** Whether to play the little celebration when a task is completed. */
@@ -72,7 +90,7 @@ interface State {
   toggleShortcuts: (open?: boolean) => void;
   toggleCelebrate: () => void;
   pushReminder: (r: ActiveReminder) => void;
-  dismissReminder: (id: string) => void;
+  dismissReminder: (id: string, acknowledge?: boolean) => void;
   requestConfirm: (opts: ConfirmOptions) => void;
   closeConfirm: () => void;
 
@@ -101,6 +119,8 @@ interface State {
   toggleFocus: () => void;
   refreshPomodoro: () => Promise<void>;
   startTaskTimer: (id: string) => Promise<void>;
+  pauseTaskTimer: () => Promise<void>;
+  resumeTaskTimer: () => Promise<void>;
   stopTaskTimer: () => Promise<void>;
   pomodoroStart: () => Promise<void>;
   pomodoroPause: () => Promise<void>;
@@ -122,6 +142,7 @@ export const useStore = create<State>((set, get) => ({
   view: { kind: "today" },
   selectedId: null,
   loading: true,
+  loadError: null,
   reminders: [],
   theme: initialTheme(),
   confirm: null,
@@ -133,25 +154,54 @@ export const useStore = create<State>((set, get) => ({
   activeTimer: null,
   pomodoro: null,
   showFocus: false,
+  taskTimerMode: "tracker",
+  setTaskTimerMode: async (mode) => {
+    await api.setSetting("task_timer_mode", mode);
+    set({ taskTimerMode: mode });
+  },
 
   showShortcuts: false,
+  localeVersion: 0,
+  setTimeFormat: async (pref) => {
+    await setTimeFormat(pref);
+    set({ localeVersion: get().localeVersion + 1 });
+  },
+  setWeekStart: async (pref) => {
+    await setWeekStart(pref);
+    set({ localeVersion: get().localeVersion + 1 });
+  },
   celebrationAt: null,
   celebrate: localStorage.getItem("todofy-celebrate") !== "off",
 
   load: async () => {
     set({ loading: true });
-    const [tasks, labels, journal, events] = await Promise.all([
+    // Settled, not all: one failing list must not blank the whole app.
+    const [tasks, labels, journal, events] = await Promise.allSettled([
       api.listTasks(),
       api.listLabels(),
       api.listJournal(),
       api.listEvents(),
     ]);
+    const failed: string[] = [];
+    const keep = <T,>(
+      result: PromiseSettledResult<T>,
+      name: string,
+      previous: T,
+    ): T => {
+      if (result.status === "fulfilled") return result.value;
+      failed.push(name);
+      return previous;
+    };
+    const previous = get();
     set({
-      tasks: sortTasks(tasks),
-      labels,
-      journal,
-      events: sortEvents(events),
+      tasks: sortTasks(keep(tasks, "tasks", previous.tasks)),
+      labels: keep(labels, "labels", previous.labels),
+      journal: keep(journal, "journal", previous.journal),
+      events: sortEvents(keep(events, "events", previous.events)),
       loading: false,
+      loadError: failed.length
+        ? `Could not load ${failed.join(", ")}. Your data is still saved on this device.`
+        : null,
     });
   },
 
@@ -198,8 +248,13 @@ export const useStore = create<State>((set, get) => ({
       // Avoid duplicate toasts for the same task.
       reminders: [...get().reminders.filter((x) => x.id !== r.id), r],
     }),
-  dismissReminder: (id) =>
-    set({ reminders: get().reminders.filter((r) => r.id !== id) }),
+  // Closing the toast answers the reminder, which stops it repeating. Snooze
+  // passes `false`: it re-arms the reminder instead, and acknowledging here
+  // would race the backend clearing that answer.
+  dismissReminder: (id, acknowledge = true) => {
+    if (acknowledge) api.acknowledgeReminder(id).catch(() => {});
+    set({ reminders: get().reminders.filter((r) => r.id !== id) });
+  },
 
   requestConfirm: (opts) => set({ confirm: opts }),
   closeConfirm: () => set({ confirm: null }),
@@ -378,14 +433,16 @@ export const useStore = create<State>((set, get) => ({
   // --- Focus timers ---------------------------------------------------------
 
   loadTimers: async () => {
-    const [activeTimer, pomodoro] = await Promise.all([
+    const [activeTimer, pomodoro, mode] = await Promise.all([
       api.activeTimer(),
       api.getPomodoro(),
+      api.getSetting("task_timer_mode").catch(() => null),
     ]);
     // Surface the widget if something is already running (e.g. after restart).
     set({
       activeTimer,
       pomodoro,
+      taskTimerMode: mode === "pomodoro" ? "pomodoro" : "tracker",
       showFocus: get().showFocus || !!activeTimer || pomodoro.running,
     });
   },
@@ -404,19 +461,36 @@ export const useStore = create<State>((set, get) => ({
 
   refreshPomodoro: async () => set({ pomodoro: await api.getPomodoro() }),
 
-  // Refresh tasks (without the loading skeleton) so tracked totals stay current
-  // after a session closes.
+  // Tasks refresh (without the loading skeleton) so tracked totals stay
+  // current. The Pomodoro is re-read because in Pomodoro mode the backend
+  // drives it alongside the stopwatch.
   startTaskTimer: async (id) => {
     const activeTimer = await api.startTimer(id);
     set({
       activeTimer,
       showFocus: true,
+      pomodoro: await api.getPomodoro(),
       tasks: sortTasks(await api.listTasks()),
     });
   },
+  // The session stays open, so the timer stays on screen with its clock held.
+  pauseTaskTimer: async () =>
+    set({
+      activeTimer: await api.pauseTimer(),
+      pomodoro: await api.getPomodoro(),
+    }),
+  resumeTaskTimer: async () =>
+    set({
+      activeTimer: await api.resumeTimer(),
+      pomodoro: await api.getPomodoro(),
+    }),
   stopTaskTimer: async () => {
     await api.stopTimer();
-    set({ activeTimer: null, tasks: sortTasks(await api.listTasks()) });
+    set({
+      activeTimer: null,
+      pomodoro: await api.getPomodoro(),
+      tasks: sortTasks(await api.listTasks()),
+    });
   },
 
   pomodoroStart: async () =>

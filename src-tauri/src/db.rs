@@ -26,6 +26,16 @@ impl Db {
     }
 }
 
+/// Fold the write-ahead log back into `todofy.db` and truncate it. Nothing ever
+/// closes the connection, so SQLite's own close-time checkpoint never runs and
+/// the main file would otherwise stay empty while all data sits in the sidecar
+/// `-wal` — making a copy of `todofy.db` alone worthless.
+pub fn checkpoint(conn: &Connection) {
+    if let Err(e) = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(())) {
+        eprintln!("todofy: could not checkpoint the database: {e}");
+    }
+}
+
 /// Create the schema if it does not yet exist, then bring older
 /// databases up to date via `migrate`.
 pub fn init(conn: &Connection) -> rusqlite::Result<()> {
@@ -57,6 +67,7 @@ pub fn init(conn: &Connection) -> rusqlite::Result<()> {
             pinned       INTEGER NOT NULL DEFAULT 0,
             repeat       TEXT,               -- daily|weekdays|weekly|monthly|yearly
             subtasks     TEXT,               -- JSON array of {id,text,done}
+            estimate_minutes INTEGER,        -- expected effort; NULL = no estimate
             updated_at   TEXT NOT NULL,      -- RFC3339, bumped on every write
             deleted_at   TEXT                -- soft-delete tombstone; NULL while live
         );
@@ -77,17 +88,20 @@ pub fn init(conn: &Connection) -> rusqlite::Result<()> {
         );
 
         -- Per-task focus stopwatch sessions. A row with a NULL end_at is the
-        -- one currently running (at most one at a time). `seconds` is filled in
-        -- on stop; `notified` counts the 'still tracking' nudges already sent.
+        -- open one (at most one at a time); it is running while `resumed_at` is
+        -- set and paused while it is NULL. `seconds` is filled in on stop;
+        -- `notified` counts the 'still tracking' nudges already sent.
         CREATE TABLE IF NOT EXISTS time_sessions (
-            id         TEXT PRIMARY KEY,   -- UUID, generated on-device
-            task_id    TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-            start_at   TEXT NOT NULL,   -- RFC3339
-            end_at     TEXT,            -- NULL while running
-            seconds    INTEGER,         -- duration, set on stop
-            notified   INTEGER NOT NULL DEFAULT 0,
-            updated_at TEXT NOT NULL,   -- RFC3339, bumped on every write
-            deleted_at TEXT             -- soft-delete tombstone; NULL while live
+            id          TEXT PRIMARY KEY,   -- UUID, generated on-device
+            task_id     TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            start_at    TEXT NOT NULL,   -- RFC3339, when the session began
+            end_at      TEXT,            -- NULL until stopped
+            seconds     INTEGER,         -- duration, set on stop
+            accumulated INTEGER NOT NULL DEFAULT 0,  -- secs banked before this segment
+            resumed_at  TEXT,            -- start of the running segment; NULL while paused
+            notified    INTEGER NOT NULL DEFAULT 0,
+            updated_at  TEXT NOT NULL,   -- RFC3339, bumped on every write
+            deleted_at  TEXT             -- soft-delete tombstone; NULL while live
         );
         CREATE INDEX IF NOT EXISTS idx_sessions_task ON time_sessions(task_id);
 
@@ -281,6 +295,48 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         // Remove mirrors created by development builds of the deferred two-way
         // Google event sync. v1.9 ships standalone local events only.
         conn.execute("DELETE FROM events WHERE source = 'google'", [])?;
+    }
+
+    // Added after the UUID conversion, which rebuilds `tasks` from an explicit
+    // column list and would otherwise drop the column.
+    if !column_exists(conn, "tasks", "estimate_minutes") {
+        conn.execute("ALTER TABLE tasks ADD COLUMN estimate_minutes INTEGER", [])?;
+    }
+
+    // Pause support: `start_at` still marks when the session began, while the
+    // live clock is `accumulated` plus the segment started at `resumed_at`.
+    // Ordered after the UUID conversion for the same reason as the estimate.
+    if !column_exists(conn, "time_sessions", "accumulated") {
+        conn.execute(
+            "ALTER TABLE time_sessions ADD COLUMN accumulated INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+    }
+    if !column_exists(conn, "time_sessions", "resumed_at") {
+        conn.execute("ALTER TABLE time_sessions ADD COLUMN resumed_at TEXT", [])?;
+        // A session left open by an older build is running, not paused.
+        conn.execute(
+            "UPDATE time_sessions SET resumed_at = start_at WHERE end_at IS NULL",
+            [],
+        )?;
+    }
+
+    // Repeating reminders. `tasks.notified` becomes a count of nudges rather
+    // than a flag (0 still means "not yet"); `last_notified_at` paces the
+    // repeats and `reminder_ack_at` stops them. Device-local, never synced.
+    // Ordered after the UUID conversion for the same reason as the estimate.
+    if !column_exists(conn, "tasks", "last_notified_at") {
+        conn.execute("ALTER TABLE tasks ADD COLUMN last_notified_at TEXT", [])?;
+    }
+    if !column_exists(conn, "tasks", "reminder_ack_at") {
+        conn.execute("ALTER TABLE tasks ADD COLUMN reminder_ack_at TEXT", [])?;
+        // Treat reminders that predate repeats as answered, so upgrading
+        // doesn't reopen all of them at once.
+        conn.execute(
+            "UPDATE tasks SET reminder_ack_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+             WHERE notified <> 0",
+            [],
+        )?;
     }
 
     // Repair rows left by older builds that soft-deleted a parent without
@@ -673,6 +729,43 @@ mod tests {
         .unwrap();
     }
 
+    /// Adding the column before `migrate_ids_to_uuid` would silently drop it
+    /// on any database still using legacy integer ids.
+    #[test]
+    fn estimate_column_survives_the_uuid_rebuild() {
+        let conn = Connection::open_in_memory().unwrap();
+        seed_legacy(&conn);
+        init(&conn).unwrap();
+
+        assert!(
+            column_exists(&conn, "tasks", "estimate_minutes"),
+            "estimate_minutes must exist after migrating a legacy database"
+        );
+        // Usable, not merely present in the schema.
+        conn.execute(
+            "UPDATE tasks SET estimate_minutes = 45 WHERE title = 'ship it'",
+            [],
+        )
+        .unwrap();
+        let stored: Option<i64> = conn
+            .query_row(
+                "SELECT estimate_minutes FROM tasks WHERE title = 'ship it'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored, Some(45));
+    }
+
+    /// Running the migration twice must not fail on the already-added column.
+    #[test]
+    fn migration_is_idempotent_for_the_estimate_column() {
+        let conn = Connection::open_in_memory().unwrap();
+        init(&conn).unwrap();
+        init(&conn).expect("re-running init must be a no-op");
+        assert!(column_exists(&conn, "tasks", "estimate_minutes"));
+    }
+
     #[test]
     fn migrates_integer_ids_to_uuids() {
         let conn = Connection::open_in_memory().unwrap();
@@ -843,5 +936,40 @@ mod tests {
                 .unwrap();
             assert_eq!(repaired, 1, "{table} was not repaired");
         }
+    }
+
+    /// A checkpointed `todofy.db` must stand on its own: users (and we, in bug
+    /// reports) copy that single file and expect their tasks to be in it.
+    #[test]
+    fn checkpoint_leaves_a_self_contained_main_file() {
+        let dir = std::env::temp_dir().join(format!("todofy-ckpt-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("todofy.db");
+
+        let conn = Connection::open(&path).unwrap();
+        init(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO tasks (id, title, created_at, updated_at)
+             VALUES ('t1', 'buy milk', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+
+        checkpoint(&conn);
+
+        // Copy only the main file, the way someone grabbing "the database" would.
+        let copy = dir.join("copy.db");
+        std::fs::copy(&path, &copy).unwrap();
+        let copied = Connection::open(&copy).unwrap();
+        let title: String = copied
+            .query_row("SELECT title FROM tasks WHERE id = 't1'", [], |row| {
+                row.get(0)
+            })
+            .expect("main file is missing data still held in the WAL");
+        assert_eq!(title, "buy milk");
+
+        drop(copied);
+        drop(conn);
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

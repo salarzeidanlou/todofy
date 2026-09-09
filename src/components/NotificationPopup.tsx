@@ -10,7 +10,14 @@ interface NotifyPayload {
   task_id: string | null;
 }
 
-const AUTO_DISMISS_MS = 6000;
+/**
+ * Long enough to read the reminder and pick a snooze offset; hovering the card
+ * pauses it.
+ */
+const AUTO_DISMISS_MS = 10000;
+
+/** Snooze offsets offered on the card, in minutes. */
+const SNOOZE_OPTIONS = [15, 30, 60];
 
 /**
  * The corner notification popup, in its own transparent, always-on-top Tauri
@@ -37,9 +44,25 @@ export function NotificationPopup() {
     timer.current = window.setTimeout(dismiss, AUTO_DISMISS_MS);
   };
 
+  /** Tell the backend this popup rendered, so it stops treating it as dropped. */
+  const show = (payload: NotifyPayload) => {
+    setNote(payload);
+    invoke("notify_popup_ack", { nonce: payload.nonce }).catch(() => {});
+    startTimer();
+  };
+
   const pause = () => {
     clearTimer();
     setPaused(true);
+  };
+
+  /**
+   * Stop this reminder repeating. Deliberate actions only: the auto-dismiss
+   * below is a timeout, not an answer.
+   */
+  const acknowledge = () => {
+    const id = note?.task_id;
+    if (id) invoke("acknowledge_reminder", { id }).catch(() => {});
   };
 
   const dismiss = () => {
@@ -48,25 +71,34 @@ export function NotificationPopup() {
     invoke("notify_popup_dismiss").catch(() => {});
   };
 
+  const close = () => {
+    acknowledge();
+    dismiss();
+  };
+
   const open = () => {
     clearTimer();
+    acknowledge();
     const id = note?.task_id ?? null;
     setNote(null);
     invoke("notify_popup_open", { taskId: id }).catch(() => {});
   };
 
+  const snooze = (minutes: number) => {
+    const id = note?.task_id;
+    if (!id) return;
+    // Snoozing re-arms the reminder; the backend clears the acknowledgement
+    // itself, so asking for one here would race it.
+    invoke("snooze_task", { id, minutes }).catch(() => {});
+    dismiss();
+  };
+
   useEffect(() => {
-    const unlisten = listen<NotifyPayload>("notify-show", (e) => {
-      setNote(e.payload);
-      startTimer();
-    });
+    const unlisten = listen<NotifyPayload>("notify-show", (e) => show(e.payload));
     // Catch a notification shown before this webview finished loading.
     invoke<NotifyPayload | null>("notify_popup_pending")
       .then((pending) => {
-        if (pending) {
-          setNote(pending);
-          startTimer();
-        }
+        if (pending) show(pending);
       })
       .catch(() => {});
     return () => {
@@ -95,13 +127,29 @@ export function NotificationPopup() {
             <div class="notification-eyebrow">Reminder · now</div>
             <p class="notification-title">{note.title}</p>
             <p class="notification-body">{note.body}</p>
+            {note.task_id && (
+              <div class="notification-actions">
+                <span>Snooze</span>
+                {SNOOZE_OPTIONS.map((minutes) => (
+                  <button
+                    key={minutes}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      snooze(minutes);
+                    }}
+                  >
+                    {minutes < 60 ? `${minutes}m` : `${minutes / 60}h`}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
         <button
           onClick={(e) => {
             e.stopPropagation();
-            dismiss();
+            close();
           }}
           title="Dismiss"
           class="notification-dismiss"

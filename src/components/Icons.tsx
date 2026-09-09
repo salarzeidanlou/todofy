@@ -19,6 +19,7 @@ import {
   GearSixIcon,
   GithubLogoIcon,
   GlobeSimpleIcon,
+  HourglassMediumIcon,
   LightningIcon,
   ListIcon as PhListIcon,
   MagnifyingGlassIcon,
@@ -68,6 +69,7 @@ function icon(Icon: PhosphorIcon, defaultWeight: "regular" | "bold" | "fill" = "
 }
 
 export const InboxIcon = icon(TrayIcon);
+export const HourglassIcon = icon(HourglassMediumIcon);
 export const UserIcon = icon(PhUserIcon);
 export const TodayIcon = icon(CalendarBlankIcon);
 export const UpcomingIcon = icon(CalendarDotsIcon);

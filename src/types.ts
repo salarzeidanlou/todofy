@@ -27,6 +27,7 @@ export interface Task {
   orderIndex: number;
   pinned: boolean;
   repeat: RepeatRule | null;
+  estimateMinutes: number | null;
   trackedSeconds: number;
   labelIds: string[];
   subtasks: Subtask[];
@@ -58,12 +59,20 @@ export interface JournalPatch {
   entryDate?: string;
 }
 
-/** The currently running per-task stopwatch. */
+/**
+ * The open per-task stopwatch. Elapsed time is `accumulated` plus, while
+ * running, the seconds since `resumedAt`; a null `resumedAt` means paused.
+ */
 export interface ActiveTimer {
   taskId: string;
   title: string;
-  startAt: string; // ISO
+  startAt: string;
+  resumedAt: string | null;
+  accumulated: number;
+  estimateMinutes: number | null;
 }
+
+export type TaskTimerMode = "tracker" | "pomodoro";
 
 /** A completed focus session, for the history view. */
 export interface SessionLog {
@@ -99,6 +108,7 @@ export interface NewTask {
   priority?: number;
   labelIds?: string[];
   repeat?: RepeatRule | null;
+  estimateMinutes?: number | null;
 }
 
 export interface TaskPatch {
@@ -112,6 +122,7 @@ export interface TaskPatch {
   pinned?: boolean;
   repeat?: RepeatRule | null;
   subtasks?: Subtask[];
+  estimateMinutes?: number | null;
 }
 
 /** A reminder that has fired, shown as an in-app toast. */

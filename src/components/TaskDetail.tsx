@@ -1,7 +1,7 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { useStore } from "../store";
-import { combineDateTime, formatDue, timeOf, today } from "../lib/dates";
+import { combineDateTime, formatDue, isPast, timeOf, today } from "../lib/dates";
 import type { RepeatRule, Subtask } from "../types";
 import {
   CalendarIcon,
@@ -9,6 +9,7 @@ import {
   ChevronRightIcon,
   FlagIcon,
   NoteIcon,
+  PauseIcon,
   PinIcon,
   PlayIcon,
   RepeatIcon,
@@ -17,9 +18,12 @@ import {
   TrashIcon,
 } from "./Icons";
 import { DatePicker } from "./DatePicker";
-import { RepeatPicker } from "./RepeatPicker";
 import { SubtaskList } from "./SubtaskList";
-import { formatDuration } from "../lib/duration";
+import { EstimatePicker } from "./EstimatePicker";
+import { formatDuration, formatMinutes } from "../lib/duration";
+import { repeatLabel } from "../lib/repeat";
+import { overEstimateBy, trackedElapsed, trackingState } from "../lib/tracking";
+import { useTick } from "../lib/useTick";
 
 const PRIORITIES: { value: 1 | 2 | 3 | 4; label: string; color: string }[] = [
   { value: 1, label: "P1", color: "var(--color-prio-1)" },
@@ -39,7 +43,10 @@ export function TaskDetail({ taskId }: { taskId?: string }) {
     snoozeTask,
     requestConfirm,
     activeTimer,
+    taskTimerMode,
     startTaskTimer,
+    pauseTaskTimer,
+    resumeTaskTimer,
     stopTaskTimer,
   } = useStore();
   const task = tasks.find((item) => item.id === (taskId ?? selectedId));
@@ -56,10 +63,15 @@ export function TaskDetail({ taskId }: { taskId?: string }) {
 
   if (!task) return null;
   const done = task.status === "done";
-  const tracking = activeTimer?.taskId === task.id;
+  const tracking = trackingState(task.id, activeTimer);
   const nextStep = task.subtasks.find((subtask) => !subtask.done);
   const completedSteps = task.subtasks.filter((subtask) => subtask.done).length;
-  const due = task.dueDate ? formatDue(task.dueDate) : null;
+  // A paused clock doesn't move, so there's nothing to re-render for.
+  useTick(tracking === "running");
+  const elapsed = trackedElapsed(task, activeTimer);
+  const over = overEstimateBy(task, elapsed);
+  const lateReminder = !done && isPast(task.remindAt);
+  const due = task.dueDate ? formatDue(task.dueDate, done ? null : task.remindAt) : null;
 
   const saveTitle = () => {
     const value = title.trim();
@@ -135,14 +147,40 @@ export function TaskDetail({ taskId }: { taskId?: string }) {
               />
             </div>
           </div>
-          <button
-            type="button"
-            class={`begin-session ${tracking ? "is-running" : ""}`}
-            onClick={() => (tracking ? stopTaskTimer() : startTaskTimer(task.id))}
-          >
-            {tracking ? <StopIcon width={16} height={16} /> : <PlayIcon width={16} height={16} />}
-            {tracking ? "Stop focus" : "Begin 15 min"}
-          </button>
+          <div class="session-controls">
+            <button
+              type="button"
+              class={`begin-session ${tracking === "running" ? "is-running" : ""}`}
+              onClick={() => {
+                if (tracking === "off") startTaskTimer(task.id);
+                else if (tracking === "running") pauseTaskTimer();
+                else resumeTaskTimer();
+              }}
+            >
+              {tracking === "running" ? (
+                <PauseIcon width={16} height={16} />
+              ) : (
+                <PlayIcon width={16} height={16} />
+              )}
+              {tracking === "running"
+                ? "Pause"
+                : tracking === "paused"
+                  ? "Resume"
+                  : taskTimerMode === "pomodoro"
+                    ? "Start focus"
+                    : "Track time"}
+            </button>
+            {tracking !== "off" && (
+              <button
+                type="button"
+                class="session-stop"
+                onClick={stopTaskTimer}
+                title="Stop tracking and bank the time"
+              >
+                <StopIcon width={16} height={16} />
+              </button>
+            )}
+          </div>
         </div>
 
         <div class="next-up-meta">
@@ -150,9 +188,43 @@ export function TaskDetail({ taskId }: { taskId?: string }) {
             <FlagIcon width={14} height={14} />P{task.priority}
           </span>
           {due && <span class={due.tone}><CalendarIcon width={14} height={14} />{due.label}</span>}
-          {task.remindAt && <span><TimerIcon width={14} height={14} />{timeOf(task.remindAt)}</span>}
-          {task.trackedSeconds > 0 && (
-            <span><TimerIcon width={14} height={14} />{formatDuration(task.trackedSeconds)} focused</span>
+          {task.remindAt && (
+            <span class={lateReminder ? "overdue" : ""}>
+              <TimerIcon width={14} height={14} />{timeOf(task.remindAt)}
+            </span>
+          )}
+          {task.repeat && (
+            <span>
+              <RepeatIcon width={14} height={14} />{repeatLabel(task.repeat)}
+            </span>
+          )}
+          {task.estimateMinutes !== null && (
+            <span title="Estimated time for this task">
+              <TimerIcon width={14} height={14} />{formatMinutes(task.estimateMinutes)} estimated
+            </span>
+          )}
+          {elapsed > 0 && (
+            <span
+              class={
+                over > 0
+                  ? "over"
+                  : tracking === "running"
+                    ? "tracking"
+                    : tracking === "paused"
+                      ? "held"
+                      : ""
+              }
+            >
+              <TimerIcon width={14} height={14} />
+              {formatDuration(elapsed)}{" "}
+              {over > 0
+                ? `tracked — ${formatDuration(over)} over estimate`
+                : tracking === "running"
+                  ? "and counting"
+                  : tracking === "paused"
+                    ? "tracked, paused"
+                    : "tracked"}
+            </span>
           )}
           {labels
             .filter((label) => task.labelIds.includes(label.id))
@@ -208,10 +280,17 @@ export function TaskDetail({ taskId }: { taskId?: string }) {
                   onTimeChange={onTime}
                   reminderAt={task.remindAt}
                   onSnooze={(minutes) => snoozeTask(task.id, minutes)}
+                  repeat={task.repeat}
+                  onRepeatChange={onRepeat}
                 />
               </DetailField>
-              <DetailField icon={<RepeatIcon width={16} height={16} />} label="Repeat">
-                <RepeatPicker value={task.repeat} onChange={onRepeat} showLabel />
+              <DetailField icon={<TimerIcon width={16} height={16} />} label="Estimate">
+                <EstimatePicker
+                  value={task.estimateMinutes}
+                  onChange={(estimateMinutes) =>
+                    patchTask({ id: task.id, estimateMinutes })
+                  }
+                />
               </DetailField>
               <DetailField icon={<FlagIcon width={16} height={16} />} label="Priority">
                 <div class="priority-inline">

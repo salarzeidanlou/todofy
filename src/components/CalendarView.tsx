@@ -8,11 +8,11 @@ import {
   type CalendarViewMode,
 } from "../lib/calendarLayout";
 import { formatTime, toLocalDate, today } from "../lib/dates";
+import { weekdayNames } from "../lib/locale";
 import type { Event, Task } from "../types";
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "./Icons";
 import { EventEditor } from "./EventEditor";
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 const HOUR_HEIGHT = 64;
 const MINUTE_HEIGHT = HOUR_HEIGHT / 60;
@@ -231,8 +231,8 @@ function MonthCalendar({
   return (
     <div class="calendar-month">
       <div class="calendar-month-weekdays">
-        {WEEKDAYS.map((weekday) => (
-          <span key={weekday}>{weekday}</span>
+        {weekdayNames("short").map((weekday) => (
+          <span key={weekday.index}>{weekday.label}</span>
         ))}
       </div>
       <div
