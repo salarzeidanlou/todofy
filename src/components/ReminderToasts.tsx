@@ -32,8 +32,10 @@ export function ReminderToasts() {
               </button>
               <button
                 onClick={() => {
+                  // Not an answer: snoozing re-arms the reminder, and the
+                  // backend clears the acknowledgement as part of that.
                   snoozeTask(r.id, 10);
-                  dismissReminder(r.id);
+                  dismissReminder(r.id, false);
                 }}
                 class="rounded-md bg-[var(--color-surface-2)] px-2.5 py-1 text-xs text-[var(--color-muted)] hover:text-[var(--color-text)]"
               >

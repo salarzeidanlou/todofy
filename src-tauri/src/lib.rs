@@ -18,7 +18,7 @@ mod tray;
 use db::Db;
 use rusqlite::Connection;
 use std::sync::Mutex;
-use tauri::{Emitter, Manager, WindowEvent};
+use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
@@ -135,6 +135,7 @@ pub fn run() {
                 if window.label() == "main" {
                     let _ = window.hide();
                     api.prevent_close();
+                    db::checkpoint(&window.state::<Db>().conn());
                 }
             }
         })
@@ -144,6 +145,7 @@ pub fn run() {
             commands::update_task,
             commands::reorder_task,
             commands::toggle_task,
+            commands::snooze_task,
             commands::delete_task,
             commands::list_labels,
             commands::create_label,
@@ -161,11 +163,16 @@ pub fn run() {
             popup::notify_popup_dismiss,
             popup::notify_popup_open,
             popup::notify_popup_pending,
+            popup::notify_popup_ack,
+            settings::system_locale,
             settings::get_setting,
             settings::set_setting,
             settings::get_autostart,
             settings::set_autostart,
+            commands::acknowledge_reminder,
             timer::start_timer,
+            timer::pause_timer,
+            timer::resume_timer,
             timer::stop_timer,
             timer::active_timer,
             timer::focus_history,
@@ -198,6 +205,11 @@ pub fn run() {
             calendar::calendar_link_remove,
             calendar::calendar_clear_links,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, event| {
+            if let RunEvent::Exit = event {
+                db::checkpoint(&app.state::<Db>().conn());
+            }
+        });
 }

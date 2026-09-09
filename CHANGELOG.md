@@ -1,5 +1,35 @@
 # Changelog
 
+## v1.10.0 — 2026-09-09
+
+### Added
+
+- **Task estimates** — give a task an expected length and see it on the task row and in its details. Pick a common length (15m up to 2h) or type your own — **"90"**, **"1h30"**, **"1.5h"**, and **"1:30"** all mean the same thing. Estimates can be set while capturing a task in the quick-add bar, and they sync with your account. Self‑hosters apply the new `task_estimate` migration
+- **Estimate vs. actual** — once a task passes the time you estimated for it, its tracked time turns **red** and shows how far over it has gone, on the task row, in the task's details, and in the focus card. The tray clock shows the overrun too (`12:30 +2:30`), so it's visible with the window closed. The overrun counts every session the task has had, so it survives a pause and stays visible after you stop
+- **Pause a task timer** — timing a task now has start, pause, and stop. Pausing holds the clock without ending the session, so a break, a phone call, or a meeting doesn't get recorded as work; resuming picks up from where the clock stopped. The controls sit on the task row, in the task's details, in the focus card, and in the tray menu, and they stay visible on the task being timed instead of appearing only on hover
+- **Choose what a task's play button does** — **Settings → Task timer** now offers **Stopwatch** (the default: it times how long the task takes) or **Pomodoro** (it also starts a focus countdown for that task, so the two clocks start, pause, resume, and stop together). Previously the button started a stopwatch while the focus window counted down a separate, unrelated Pomodoro, which was impossible to make sense of
+- **Reminders can keep asking** — **Settings → Notifications** can now repeat an unanswered reminder every 2, 5, or 10 minutes instead of showing it once. It stops as soon as you answer it: opening, dismissing, or snoozing the notification, completing the task, or starting to time it. A notification that simply times out on screen doesn't count — that's a reminder you never saw. Off by default
+- **Reminder sounds** — reminders can play a sound: **Chime**, **Ping**, **Bell**, or your own audio file, with a volume slider. The built-in tones are generated rather than recorded, so they add nothing to the download. A custom sound is stored inside todofy, so it keeps working if you later move or delete the file you picked (up to 1 MB). There's also **get louder each time a reminder repeats**, which starts a repeating reminder quiet and builds to your set volume over four rounds. New installs default to Chime; **set the sound to Silent** if you'd rather todofy stayed quiet
+- **Date & time preferences** — a new section in **Settings** to choose a 12- or 24-hour clock and which day your week starts on. Both default to **Auto**, which follows your system, and the setting shows you what Auto currently resolves to
+- **Editable quick times** — the one-tap times in the date picker were fixed at 9:00, 12:00 and 18:00 with no way to change them. **Settings → Date & time** now lists them: click one to remove it, add your own with the time field, up to four. Remove them all and the picker just shows the time field
+
+### Changed
+
+- **todofy now follows your system's clock and calendar conventions.** Times appear in your locale's 12- or 24-hour format, and the calendar, the date picker, and the day rail all start the week on the right day — Monday across most of the world, Sunday or Saturday where that's the convention. Previously the week always started on Sunday, and the clock followed the app window rather than your desktop's regional settings
+- **Reworked time entry** — the date picker's time control is no longer the system time box. It's now a themed **HH:MM** field that follows your locale's 12- or 24-hour convention: arrow keys nudge the hour and minutes, typing `:` jumps to the minutes, and the hour moves on by itself once it can't take another digit. The same field replaces the start and end time boxes when editing a calendar event, where the old control also ignored the light theme
+- **Repeat now lives in the date picker**, next to the date and time it applies to, instead of in a separate dropdown beside it. Pick **Never**, **Daily**, **Weekdays**, **Weekly**, **Monthly** or **Yearly** while you're already choosing when the task is due. A repeating task shows its rule in the task's details as well as on the task row
+- **Tracked time counts up while you work** — a task being tracked now shows its time climbing on the task row and in its details, highlighted while it runs, instead of showing the old total until you stopped the timer
+- **The task timer button says what it does.** It used to read "Begin 15 min" while actually starting an open-ended stopwatch, with the 25-minute Pomodoro running separately and unrelated. It now reads **Track time** (or **Start focus** in Pomodoro mode), then **Pause** or **Resume**, and a stop button appears beside it while a session is open
+- **Reminder notifications stay put** — todofy's own notification card no longer vanishes on a fixed timer while you're reading it. Hovering the card holds it open as intended, and it now waits ten seconds rather than six
+
+### Fixed
+
+- A task whose reminder time has passed now reads as overdue instead of sitting quietly as "Today". The due date and the reminder both turn red once the time is behind you, and views keep up with the clock on their own — a task turns overdue while you're looking at it, and todofy left open overnight no longer shows yesterday's "Today"
+- A time typed into the date picker is no longer lost. It's kept the moment it's complete, so dismissing the picker keeps it, and pressing Enter sets the time instead of saving the whole task
+- Reminders can now be snoozed straight from the notification — **15m**, **30m**, or **1h** — instead of only from the in-app toast, which the default notification style never showed
+- An empty task list caused by a failed load. If one part of your data couldn't be read at startup, todofy showed an empty list in every view — including tasks you added afterwards — with no indication anything had gone wrong. Each part now loads on its own, so a problem with one never hides the rest, and todofy tells you what failed and offers to retry
+- **`todofy.db` is now a complete database on its own.** Recent changes were held in a companion `todofy.db-wal` file and only folded into the main file occasionally, so copying `todofy.db` for a backup could produce a file that looked empty. todofy now folds it in when you close the window to the tray and when you quit
+
 ## v1.9.0 — 2026-09-06
 
 ### Added

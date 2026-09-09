@@ -13,8 +13,8 @@ import { repeatLabel } from "../lib/repeat";
 import type { NewTask, RepeatRule, ViewId } from "../types";
 import { BellIcon, CalendarIcon, FlagIcon, PlusIcon, RepeatIcon } from "./Icons";
 import { DatePicker } from "./DatePicker";
+import { EstimatePicker } from "./EstimatePicker";
 import { PriorityPicker } from "./PriorityPicker";
-import { RepeatPicker } from "./RepeatPicker";
 
 const PRIORITY_COLOR: Record<number, string> = {
   1: "var(--color-prio-1)",
@@ -38,6 +38,7 @@ export function QuickAdd() {
   const [time, setTime] = useState<string | null>(null);
   const [priority, setPriority] = useState(4);
   const [repeat, setRepeat] = useState<RepeatRule | null>(null);
+  const [estimate, setEstimate] = useState<number | null>(null);
   const [focused, setFocused] = useState(false);
 
   // When you switch views, pre-fill the date so the task shows up there.
@@ -69,6 +70,7 @@ export function QuickAdd() {
     // A time turns into a reminder the scheduler will notify on.
     if (finalDue && finalTime) task.remindAt = combineDateTime(finalDue, finalTime);
     if (finalRepeat) task.repeat = finalRepeat;
+    if (estimate) task.estimateMinutes = estimate;
 
     const labelIds = new Set(parsed.labelIds);
     if (view.kind === "label") labelIds.add(view.labelId);
@@ -80,6 +82,7 @@ export function QuickAdd() {
     setTime(null);
     setPriority(4);
     setRepeat(null);
+    setEstimate(null);
   };
 
   return (
@@ -99,12 +102,19 @@ export function QuickAdd() {
           class="quick-add-input"
         />
         <PriorityPicker value={priority} onChange={setPriority} placement="top" />
-        <RepeatPicker value={repeat} onChange={setRepeat} placement="top" />
+        <EstimatePicker
+          value={estimate}
+          onChange={setEstimate}
+          placeholder="Est"
+          placement="top"
+        />
         <DatePicker
           value={due || null}
           onChange={(v) => setDue(v ?? "")}
           time={time}
           onTimeChange={setTime}
+          repeat={repeat}
+          onRepeatChange={setRepeat}
         />
         <button
           type="submit"

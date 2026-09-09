@@ -3,6 +3,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { useStore } from "../store";
 import type { ViewId } from "../types";
 import { toLocalDate, today } from "../lib/dates";
+import { weekdayOffset } from "../lib/locale";
 import {
   CalendarIcon,
   CheckCircleIcon,
@@ -139,7 +140,7 @@ export function DayRail() {
   }, [selectedKey]);
 
   const weekStart = new Date(anchorDate);
-  weekStart.setDate(anchorDate.getDate() - anchorDate.getDay());
+  weekStart.setDate(anchorDate.getDate() - weekdayOffset(anchorDate));
   const week = Array.from({ length: 7 }, (_, index) => {
     const date = new Date(weekStart);
     date.setDate(weekStart.getDate() + index);

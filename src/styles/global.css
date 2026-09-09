@@ -1005,6 +1005,27 @@ body {
   background: var(--color-danger);
 }
 
+.session-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.session-stop {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--color-surface-2);
+  color: var(--color-danger);
+  transition: background 150ms ease;
+}
+
+.session-stop:hover {
+  background: var(--color-border-strong);
+}
+
 .next-up-meta {
   display: flex;
   flex-wrap: wrap;
@@ -1030,6 +1051,36 @@ body {
   width: 6px;
   height: 6px;
   border-radius: 50%;
+}
+
+.next-up-meta .overdue {
+  color: var(--color-danger);
+}
+
+/* A live clock reads as active, not alarming — red is kept for an overrun. */
+.next-up-meta .tracking {
+  color: var(--color-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tracked, but held: the total is real, the clock just isn't moving. */
+.next-up-meta .held {
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.next-up-meta .over {
+  color: var(--color-danger);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.next-up-meta .today {
+  color: var(--color-success);
+}
+
+.next-up-meta .soon {
+  color: var(--color-accent);
 }
 
 .next-up-meta button {
@@ -1516,6 +1567,25 @@ body {
   color: var(--color-accent);
 }
 
+/* A timer running on this task — the readout counts up live. */
+.task-row-meta .is-tracking {
+  color: var(--color-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.task-row-meta .is-held {
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Past its estimate. Red is reserved for this, so it reads at a glance
+   whether or not the timer is still running. */
+.task-row-meta .is-over {
+  color: var(--color-danger);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .task-row-actions {
   display: flex;
   flex: 0 0 auto;
@@ -1525,7 +1595,10 @@ body {
 }
 
 .task-row:hover .task-row-actions,
-.task-row:focus-within .task-row-actions {
+.task-row:focus-within .task-row-actions,
+/* An open session keeps its controls visible — you shouldn't have to go
+   hunting for the pause button on the task you're timing. */
+.task-row.is-tracked .task-row-actions {
   opacity: 1;
 }
 
@@ -1545,6 +1618,10 @@ body {
 
 .task-row-actions .is-running {
   color: var(--color-danger);
+}
+
+.task-row-actions .is-held {
+  color: var(--color-warning);
 }
 
 .task-row-actions .is-pinned {
@@ -1605,6 +1682,38 @@ body {
   border-bottom: 1px solid var(--color-border);
   background: color-mix(in srgb, var(--color-surface) 50%, transparent);
   animation: pulse 1.6s ease-in-out infinite;
+}
+
+.load-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 40%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+}
+
+.load-error p {
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.load-error button {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.load-error button:hover {
+  border-color: var(--color-danger);
 }
 
 .empty-state {
@@ -2803,6 +2912,37 @@ body {
   -webkit-line-clamp: 2;
 }
 
+.notification-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.notification-actions span {
+  color: var(--color-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.notification-actions button {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface-2);
+  padding: 3px 8px;
+  color: var(--color-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.notification-actions button:hover {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
 .notification-dismiss {
   position: absolute;
   top: 9px;
@@ -3000,7 +3140,7 @@ body {
     grid-template-columns: auto minmax(0, 1fr);
   }
 
-  .begin-session {
+  .session-controls {
     grid-column: 1 / -1;
     margin-left: 43px;
   }

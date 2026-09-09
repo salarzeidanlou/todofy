@@ -29,7 +29,8 @@ Plan tasks and local events, stay focused with timers and reminders, optionally 
 - ⚡ **Global quick‑add** — hit **Ctrl+Alt+A** anywhere (even with todofy tucked in the tray) for a floating capture bar; type, press Enter, and you're back to what you were doing
 - ✍️ **Natural‑language quick‑add** — type _"pay rent friday 5pm #home p1"_ and the date, time, priority, and label are parsed out live and shown as chips
 - 🔁 **Recurring tasks** — repeat _daily, every weekday, weekly, monthly,_ or _yearly_; completing one rolls it forward to the next occurrence instead of finishing it (also from natural language — _"water plants every week"_)
-- 🍅 **Focus timers** — a built‑in **Pomodoro** (focus / short & long breaks) _and_ a **per‑task stopwatch**; both keep counting while hidden in the tray and survive a restart, and never auto‑stop — they nudge you instead
+- 🍅 **Focus timers** — a built‑in **Pomodoro** (focus / short & long breaks) _and_ a **per‑task stopwatch** with **start, pause, and stop**, so a break isn't recorded as work; both keep counting while hidden in the tray and survive a restart, and never auto‑stop — they nudge you instead. Choose whether a task's play button is a plain stopwatch or launches a Pomodoro bound to that task
+- ⏳ **Estimates vs. actual** — give a task an expected length (**"90"**, **"1h30"**, **"1.5h"** all work), watch its time count up live on the task row, and see it turn **red** with the overrun once it runs past the estimate — in the app and on the tray clock
 - 📊 **Focus screen** — start the Pomodoro, tune phase lengths, and review your focus history (Today / This week / total, grouped by day)
 - 📔 **Journal** — write free‑form entries with **Markdown**, an optional title, and a 1–5 **mood**; entries group by day, mark journaled days in the calendar rail, and offer a one‑tap summary of what you completed and focused on that day (press **Shift+J** to jump in)
 - ✋ **Drag‑and‑drop reordering** — grab any task and drop it exactly where you want; your manual order sticks
@@ -39,13 +40,14 @@ Plan tasks and local events, stay focused with timers and reminders, optionally 
 - 🔍 **Search & filters** — narrow any view by title/notes as you type, with filter chips for priority and labels; press `/` to jump to search
 - 🧠 **ADHD-friendly touches** — relative due dates (_"in 3 days"_), a completion streak & confetti reward (both optional and motion-safe), and a `?` shortcut cheat-sheet
 - 🏷️ **Labels** — create, rename, recolor (with a full custom color picker), and delete; a searchable Labels page plus per-label filtering
-- 📆 **Beautiful date & time picker** — click the month or year to jump anywhere in seconds
-- ⏰ **Reminders that reach you** — desktop notifications fire **even when hidden in the tray**, as either a system notification or todofy's own popup card pinned to a screen corner, with one‑tap **snooze**
+- 📆 **Beautiful date & time picker** — click the month or year to jump anywhere in seconds; set the time in a themed **HH:MM** field that follows your locale, choose the recurrence right there, and edit the one‑tap quick times to whatever suits your day
+- ⏰ **Reminders that reach you** — desktop notifications fire **even when hidden in the tray**, as either a system notification or todofy's own popup card pinned to a screen corner, with one‑tap **snooze**. Optionally repeat until you actually answer, with a **sound** (built‑in or your own file), a volume, and a ramp that gets louder each time
 - 🚩 **Priorities** — P1–P4 with color‑coded flags
 - ⚙️ **Settings & run‑on‑startup** — launch todofy at login, opening the window or starting quietly in the tray
+- 🌍 **Follows your system** — 12‑ or 24‑hour clock and the day your week starts on are taken from your desktop's regional settings, with an explicit override if you'd rather choose
 - 🌗 **Light & dark themes** — dark by default, remembers your choice
 - ⌨️ **Keyboard‑first** — add, navigate, complete, and edit without touching the mouse
-- 🪟 **System tray** — closes to tray and keeps running so reminders never miss; start/pause the Pomodoro, stop the task timer, and watch the live countdown right from the tray
+- 🪟 **System tray** — closes to tray and keeps running so reminders never miss; start/pause the Pomodoro, pause or stop the task timer, and watch the live countdown right from the tray
 - 🧭 **Date-oriented navigation** — move between smart views from the top navigation bar and use the day rail to jump through your schedule
 - ☁️ **Optional account sync** — sign in with an email and password or **Continue with Google** to sync your tasks, labels, focus history, and journal across devices (backed by Supabase, with row‑level security). Sessions are kept in your OS secret store, and the whole thing is opt‑in. If you switch accounts on one installation, Todofy pauses before syncing and lets you load the new account's cloud data or safely copy the current device data into it with new record IDs
 - 🗓️ **Local calendar** — plan in month, week, or day views, with tasks on their due dates and standalone all-day or timed events you can create and edit. Standalone events stay on this device and are not included in account sync or pushed to Google
@@ -91,20 +93,20 @@ Grab a package from the [Releases](../../releases) page, or build it yourself (s
 **AppImage** — portable, runs on any distro:
 
 ```bash
-chmod +x todofy_1.9.0_amd64.AppImage
-./todofy_1.9.0_amd64.AppImage
+chmod +x todofy_1.10.0_amd64.AppImage
+./todofy_1.10.0_amd64.AppImage
 ```
 
 **Debian / Ubuntu:**
 
 ```bash
-sudo dpkg -i todofy_1.9.0_amd64.deb
+sudo dpkg -i todofy_1.10.0_amd64.deb
 ```
 
 **Fedora / RHEL / openSUSE:**
 
 ```bash
-sudo rpm -i todofy-1.9.0-1.x86_64.rpm
+sudo rpm -i todofy-1.10.0-1.x86_64.rpm
 ```
 
 **macOS** — open the `.dmg` and drag todofy into Applications. It's not
@@ -112,14 +114,14 @@ notarized yet, so on first launch right‑click the app and choose **Open** to
 get past Gatekeeper:
 
 ```
-todofy_1.9.0_universal.dmg  # Intel and Apple Silicon
+todofy_1.10.0_universal.dmg  # Intel and Apple Silicon
 ```
 
 **Windows** — run the installer:
 
 ```
-todofy_1.9.0_x64-setup.exe   # NSIS installer
-todofy_1.9.0_x64_en-US.msi   # or the MSI
+todofy_1.10.0_x64-setup.exe   # NSIS installer
+todofy_1.10.0_x64_en-US.msi   # or the MSI
 ```
 
 > Your tasks live in the app's data directory — `~/.local/share/com.unifybrowse.todofy/`
@@ -178,7 +180,7 @@ Bundles are written to `src-tauri/target/release/bundle/` (`.deb`, `.rpm`, and `
 Sync is **off by default** — todofy is local‑first and works fully offline without it. To run your own sync backend so your tasks, labels, focus history, and journal follow you across devices (with nothing going through anyone else's server):
 
 1. **Create a Supabase project** — the free tier is plenty — at [supabase.com](https://supabase.com), or use any Postgres you control. Make sure **Email** auth is enabled (it is by default).
-2. **Apply the schema.** Open the project's **SQL Editor** and run the migrations in order — [`20260826120000_sync_schema.sql`](supabase/migrations/20260826120000_sync_schema.sql), [`20260902000000_journal.sql`](supabase/migrations/20260902000000_journal.sql), then [`20260902133603_sync_tombstones.sql`](supabase/migrations/20260902133603_sync_tombstones.sql) — or use the [Supabase CLI](https://supabase.com/docs/guides/cli):
+2. **Apply the schema.** Open the project's **SQL Editor** and run the migrations in order — [`20260826120000_sync_schema.sql`](supabase/migrations/20260826120000_sync_schema.sql), [`20260902000000_journal.sql`](supabase/migrations/20260902000000_journal.sql), [`20260902133603_sync_tombstones.sql`](supabase/migrations/20260902133603_sync_tombstones.sql), then [`20260909120000_task_estimate.sql`](supabase/migrations/20260909120000_task_estimate.sql) — or use the [Supabase CLI](https://supabase.com/docs/guides/cli):
 
    ```bash
    supabase link --project-ref <your-project-ref>
@@ -241,8 +243,8 @@ todofy/
 ├── src/                    # Preact frontend
 │   ├── components/         # UI (Sidebar, TaskList, TaskDetail, DatePicker,
 │   │                       #     FocusView, JournalView, SettingsView, …)
-│   ├── lib/                # dates, duration, theme, keyboard, nlp, repeat,
-│   │                       #     markdown, journal helpers
+│   ├── lib/                # dates, duration, locale, sound, tracking, theme,
+│   │                       #     keyboard, nlp, repeat, markdown, journal helpers
 │   ├── store.ts            # Zustand store
 │   └── types.ts
 ├── src-tauri/              # Rust backend
@@ -278,6 +280,10 @@ todofy/
 - [x] Journal with mood, Markdown, and day summaries
 - [x] Local calendar with month, week, and day views
 - [x] Google Calendar sync (one‑way push)
+- [x] Task estimates with elapsed-vs-estimate tracking
+- [x] System clock and calendar conventions (12/24h, week start)
+- [x] Repeating reminders with sound, volume, and ramp-up
+- [ ] Priority profiles (per-priority names, colors, sounds, and notification styles)
 
 ## 🤝 Contributing
 

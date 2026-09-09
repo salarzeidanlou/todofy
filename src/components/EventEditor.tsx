@@ -6,6 +6,7 @@ import { isValidEventTimeRange } from "../lib/calendarLayout";
 import type { Event } from "../types";
 import { CalendarIcon, CloseIcon, TrashIcon } from "./Icons";
 import { DatePicker } from "./DatePicker";
+import { TimeField } from "./TimeField";
 
 interface Props {
   event: Event | null;
@@ -140,20 +141,19 @@ export function EventEditor({
 
           {!allDay && (
             <div class="flex items-center gap-2">
-              <input
-                type="time"
-                value={startTime}
-                onInput={(e) => setStartTime(e.currentTarget.value)}
-                class="flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm outline-none [color-scheme:dark] focus:ring-1 focus:ring-[var(--color-accent)] disabled:opacity-70"
+              <TimeField
+                variant="field"
+                label="Start"
+                value={startTime || null}
+                onChange={(v) => setStartTime(v ?? "")}
               />
               <span class="text-xs text-[var(--color-faint)]">to</span>
-              <input
-                type="time"
-                value={endTime}
-                onInput={(e) => setEndTime(e.currentTarget.value)}
-                min={startTime}
-                aria-invalid={invalidTimeRange}
-                class="flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm outline-none [color-scheme:dark] focus:ring-1 focus:ring-[var(--color-accent)] disabled:opacity-70"
+              <TimeField
+                variant="field"
+                label="End"
+                value={endTime || null}
+                onChange={(v) => setEndTime(v ?? "")}
+                invalid={invalidTimeRange}
               />
             </div>
           )}

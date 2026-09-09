@@ -1,3 +1,5 @@
+import { weekdayOffset } from "./locale";
+
 export type CalendarViewMode = "month" | "week" | "day";
 
 export interface TimeBlock {
@@ -22,13 +24,14 @@ export function addCalendarDays(date: Date, amount: number): Date {
 }
 
 export function startOfCalendarWeek(date: Date): Date {
-  return addCalendarDays(date, -date.getDay());
+  return addCalendarDays(date, -weekdayOffset(date));
 }
 
 export function monthGridDays(anchor: Date): Date[] {
   const monthStart = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
   const gridStart = startOfCalendarWeek(monthStart);
-  const visibleDays = Math.ceil((monthStart.getDay() + daysInMonth(monthStart)) / 7) * 7;
+  const visibleDays =
+    Math.ceil((weekdayOffset(monthStart) + daysInMonth(monthStart)) / 7) * 7;
   return Array.from({ length: visibleDays }, (_, index) =>
     addCalendarDays(gridStart, index),
   );

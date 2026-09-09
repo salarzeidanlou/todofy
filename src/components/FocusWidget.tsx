@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import { useStore } from "../store";
 import type { PomodoroPhase } from "../types";
 import { clock, formatDuration, secondsSince } from "../lib/duration";
+import { overEstimateBy, timerElapsed, trackedElapsed } from "../lib/tracking";
+import { useTick } from "../lib/useTick";
 import {
   CloseIcon,
   ExpandIcon,
@@ -28,19 +30,16 @@ export function FocusWidget() {
     pomodoroPause,
     pomodoroReset,
     pomodoroNext,
+    tasks,
     select,
     setView,
+    pauseTaskTimer,
+    resumeTaskTimer,
     stopTaskTimer,
   } = useStore();
 
-  // Re-render every second so the countdowns tick.
-  const [, setNow] = useState(Date.now());
-  useEffect(() => {
-    const running = pomodoro?.running || !!activeTimer;
-    if (!running) return;
-    const i = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(i);
-  }, [pomodoro?.running, activeTimer]);
+  // Tick the countdowns. A paused stopwatch is frozen, so it doesn't count.
+  useTick(!!pomodoro?.running || !!activeTimer?.resumedAt);
 
   // Click anywhere outside the card closes it, same as the ✕ button.
   const rootRef = useRef<HTMLDivElement>(null);
@@ -64,7 +63,16 @@ export function FocusWidget() {
     : 0;
   const remaining = p ? p.target - elapsed : 0;
   const overtime = remaining < 0;
-  const activeElapsed = activeTimer ? secondsSince(activeTimer.startAt) : 0;
+  const activeElapsed = activeTimer ? timerElapsed(activeTimer) : 0;
+  const taskPaused = !!activeTimer && !activeTimer.resumedAt;
+  // The clock shows this session; an overrun is judged against every session,
+  // so a break doesn't reset it.
+  const timedTask = activeTimer
+    ? tasks.find((task) => task.id === activeTimer.taskId)
+    : undefined;
+  const taskOver = timedTask
+    ? overEstimateBy(timedTask, trackedElapsed(timedTask, activeTimer))
+    : 0;
 
   return (
     <div
@@ -155,8 +163,15 @@ export function FocusWidget() {
       {activeTimer && (
         <div class="flex items-center gap-3 border-t border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
           <span class="relative flex h-2.5 w-2.5 shrink-0">
-            <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--color-danger)] opacity-70" />
-            <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-[var(--color-danger)]" />
+            {/* The pulse means "still counting", so a paused dot holds still. */}
+            {!taskPaused && (
+              <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--color-danger)] opacity-70" />
+            )}
+            <span
+              class={`relative inline-flex h-2.5 w-2.5 rounded-full ${
+                taskPaused ? "bg-[var(--color-muted)]" : "bg-[var(--color-danger)]"
+              }`}
+            />
           </span>
           <button
             onClick={() => select(activeTimer.taskId)}
@@ -164,9 +179,22 @@ export function FocusWidget() {
             title="Open task"
           >
             <p class="truncate text-sm text-[var(--color-text)]">{activeTimer.title}</p>
-            <p class="font-mono text-xs tabular-nums text-[var(--color-muted)]">
+            <p
+              class={`font-mono text-xs tabular-nums ${
+                taskOver > 0 ? "text-[var(--color-danger)]" : "text-[var(--color-muted)]"
+              }`}
+            >
               {formatDuration(activeElapsed)}
+              {taskPaused && " · paused"}
+              {taskOver > 0 && ` · ${formatDuration(taskOver)} over`}
             </p>
+          </button>
+          <button
+            onClick={taskPaused ? resumeTaskTimer : pauseTaskTimer}
+            title={taskPaused ? "Resume tracking" : "Pause tracking"}
+            class="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
+          >
+            {taskPaused ? <PlayIcon width={18} height={18} /> : <PauseIcon width={18} height={18} />}
           </button>
           <button
             onClick={stopTaskTimer}

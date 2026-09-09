@@ -18,15 +18,22 @@ pub const POPUP_LABEL: &str = "notification";
 /// Gap (logical px) between the popup and the screen edges.
 const MARGIN: i32 = 16;
 
-/// The popup hides itself this long after showing even if the webview never
-/// acknowledges it. A backstop: the window is transparent and always-on-top,
-/// so a dropped `notify-show` event (e.g. the webview wasn't ready yet) would
-/// otherwise leave an invisible frame swallowing clicks in the screen corner.
+/// How long to wait for the webview to confirm a popup before assuming the
+/// event was dropped. The window is transparent and always-on-top, so an
+/// undelivered frame would sit in the corner swallowing clicks.
 const SAFETY_HIDE_MS: u64 = 7000;
+
+/// Ceiling on how long a popup may stay up. Only catches a wedged renderer;
+/// the webview normally dismisses itself well before this.
+const MAX_VISIBLE_MS: u64 = 60_000;
 
 /// Monotonic id of the most recently shown popup. The safety-hide task only
 /// hides if it still matches, so it never closes a newer popup.
 static LATEST_NONCE: AtomicU64 = AtomicU64::new(0);
+
+/// Newest popup the webview has confirmed. While this trails `LATEST_NONCE`
+/// the popup is presumed undelivered.
+static ACKED_NONCE: AtomicU64 = AtomicU64::new(0);
 
 /// The notification currently on screen, so a webview that mounts after the
 /// event was emitted can still fetch and render it (see [`notify_popup_pending`]).
@@ -82,13 +89,29 @@ pub fn show(app: &AppHandle, title: &str, body: &str, task_id: Option<String>) {
     let _ = win.set_always_on_top(true);
     let _ = win.emit_to(POPUP_LABEL, "notify-show", payload);
 
+    // Two backstops, neither of which may cut short a popup being read: the
+    // first fires only if the webview never confirmed it, the second is the
+    // ceiling for a wedged renderer.
     let app = app.clone();
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(SAFETY_HIDE_MS));
-        if LATEST_NONCE.load(Ordering::Relaxed) == nonce {
+        let current = || LATEST_NONCE.load(Ordering::Relaxed) == nonce;
+        if current() && ACKED_NONCE.load(Ordering::Relaxed) != nonce {
+            hide(&app);
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(MAX_VISIBLE_MS - SAFETY_HIDE_MS));
+        if current() {
             hide(&app);
         }
     });
+}
+
+/// Called by the popup webview once it has rendered, so the backstop above
+/// stops treating the popup as a dropped event.
+#[tauri::command]
+pub fn notify_popup_ack(nonce: u64) {
+    ACKED_NONCE.fetch_max(nonce, Ordering::Relaxed);
 }
 
 /// Hide the popup window and forget the pending notification.

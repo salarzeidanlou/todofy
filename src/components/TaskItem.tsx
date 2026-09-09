@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import { useStore } from "../store";
-import { formatDue, formatReminder } from "../lib/dates";
+import { formatDue, formatReminder, isPast } from "../lib/dates";
 import type { Task } from "../types";
 import {
   BellIcon,
@@ -8,6 +8,8 @@ import {
   CheckIcon,
   FlagIcon,
   GripIcon,
+  HourglassIcon,
+  PauseIcon,
   PinIcon,
   PlayIcon,
   RepeatIcon,
@@ -16,7 +18,9 @@ import {
   TrashIcon,
 } from "./Icons";
 import { repeatLabel } from "../lib/repeat";
-import { formatDuration } from "../lib/duration";
+import { formatDuration, formatMinutes } from "../lib/duration";
+import { overEstimateBy, trackedElapsed, trackingState } from "../lib/tracking";
+import { useTick } from "../lib/useTick";
 
 const PRIORITY_COLOR: Record<number, string> = {
   1: "var(--color-prio-1)",
@@ -51,15 +55,23 @@ export function TaskItem({ task, drag }: { task: Task; drag?: DragProps }) {
     requestConfirm,
     activeTimer,
     startTaskTimer,
+    pauseTaskTimer,
+    resumeTaskTimer,
     stopTaskTimer,
   } = useStore();
   const done = task.status === "done";
   const selected = selectedId === task.id;
   const taskLabels = labels.filter((label) => task.labelIds.includes(label.id));
-  const due = task.dueDate ? formatDue(task.dueDate) : null;
+  // A completed task is never late, so its reminder no longer colours the date.
+  const lateReminder = !done && isPast(task.remindAt);
+  const due = task.dueDate ? formatDue(task.dueDate, done ? null : task.remindAt) : null;
   const subtaskTotal = task.subtasks.length;
   const subtaskDone = task.subtasks.filter((subtask) => subtask.done).length;
-  const tracking = activeTimer?.taskId === task.id;
+  const tracking = trackingState(task.id, activeTimer);
+  // A paused clock doesn't move, so there's nothing to re-render for.
+  useTick(tracking === "running");
+  const elapsed = trackedElapsed(task, activeTimer);
+  const over = overEstimateBy(task, elapsed);
 
   return (
     <article
@@ -74,7 +86,7 @@ export function TaskItem({ task, drag }: { task: Task; drag?: DragProps }) {
           select(task.id);
         }
       }}
-      class={`task-row ${selected ? "is-selected" : ""} ${done ? "is-done" : ""} ${drag?.dragging ? "is-dragging" : ""}`}
+      class={`task-row ${selected ? "is-selected" : ""} ${done ? "is-done" : ""} ${drag?.dragging ? "is-dragging" : ""} ${tracking !== "off" ? "is-tracked" : ""}`}
     >
       {drag?.dropEdge && <span class={`drop-indicator is-${drag.dropEdge}`} />}
       {drag?.reorderable && (
@@ -119,7 +131,14 @@ export function TaskItem({ task, drag }: { task: Task; drag?: DragProps }) {
         )}
         {due && <span class={DUE_TONE[due.tone]}>{due.label}</span>}
         {task.remindAt && (
-          <span title={formatReminder(task.remindAt)}>
+          <span
+            class={lateReminder ? "is-overdue" : ""}
+            title={
+              lateReminder
+                ? `Reminder passed — ${formatReminder(task.remindAt)}`
+                : formatReminder(task.remindAt)
+            }
+          >
             <BellIcon width={13} height={13} />{formatReminder(task.remindAt)}
           </span>
         )}
@@ -128,9 +147,34 @@ export function TaskItem({ task, drag }: { task: Task; drag?: DragProps }) {
             <RepeatIcon width={13} height={13} />{repeatLabel(task.repeat)}
           </span>
         )}
-        {task.trackedSeconds > 0 && (
-          <span title="Time focused on this task">
-            <TimerIcon width={13} height={13} />{formatDuration(task.trackedSeconds)}
+        {task.estimateMinutes !== null && (
+          <span title={`Estimated ${formatMinutes(task.estimateMinutes)}`}>
+            <HourglassIcon width={13} height={13} />{formatMinutes(task.estimateMinutes)}
+          </span>
+        )}
+        {elapsed > 0 && (
+          <span
+            class={
+              over > 0
+                ? "is-over"
+                : tracking === "running"
+                  ? "is-tracking"
+                  : tracking === "paused"
+                    ? "is-held"
+                    : ""
+            }
+            title={
+              over > 0
+                ? `${formatDuration(over)} over the ${formatMinutes(task.estimateMinutes ?? 0)} estimate`
+                : tracking === "running"
+                  ? "Tracking now"
+                  : tracking === "paused"
+                    ? "Paused — the clock is held"
+                    : "Time tracked on this task"
+            }
+          >
+            <TimerIcon width={13} height={13} />{formatDuration(elapsed)}
+            {over > 0 ? ` (+${formatDuration(over)})` : tracking === "paused" ? " paused" : ""}
           </span>
         )}
         {taskLabels.map((label) => (
@@ -146,12 +190,37 @@ export function TaskItem({ task, drag }: { task: Task; drag?: DragProps }) {
             type="button"
             onClick={(event) => {
               event.stopPropagation();
-              tracking ? stopTaskTimer() : startTaskTimer(task.id);
+              if (tracking === "off") startTaskTimer(task.id);
+              else if (tracking === "running") pauseTaskTimer();
+              else resumeTaskTimer();
             }}
-            class={tracking ? "is-running" : ""}
-            title={tracking ? "Stop tracking time" : "Start tracking time"}
+            class={tracking === "running" ? "is-running" : tracking === "paused" ? "is-held" : ""}
+            title={
+              tracking === "running"
+                ? "Pause tracking"
+                : tracking === "paused"
+                  ? "Resume tracking"
+                  : "Start tracking time"
+            }
           >
-            {tracking ? <StopIcon width={15} height={15} /> : <PlayIcon width={15} height={15} />}
+            {tracking === "running" ? (
+              <PauseIcon width={15} height={15} />
+            ) : (
+              <PlayIcon width={15} height={15} />
+            )}
+          </button>
+        )}
+        {!done && tracking !== "off" && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              stopTaskTimer();
+            }}
+            class="is-running"
+            title="Stop tracking and bank the time"
+          >
+            <StopIcon width={15} height={15} />
           </button>
         )}
         <button

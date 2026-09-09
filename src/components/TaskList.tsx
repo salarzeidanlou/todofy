@@ -96,6 +96,8 @@ export function TaskList() {
     clearFilters,
     rescheduleOverdue,
     select,
+    loadError,
+    load,
   } = useStore();
   const [completedPage, setCompletedPage] = useState(1);
 
@@ -202,6 +204,15 @@ export function TaskList() {
             </div>
             <SearchBar />
           </div>
+
+          {loadError && (
+            <div class="load-error" role="alert">
+              <p>{loadError}</p>
+              <button type="button" onClick={() => load()}>
+                Try again
+              </button>
+            </div>
+          )}
 
           {loading ? (
             <Skeleton />

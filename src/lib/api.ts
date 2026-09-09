@@ -44,6 +44,7 @@ export const api = {
   updateEvent: (patch: EventPatch) => invoke<Event>("update_event", { patch }),
   deleteEvent: (id: string) => invoke<void>("delete_event", { id }),
 
+  systemLocale: () => invoke<string | null>("system_locale"),
   getSetting: (key: string) => invoke<string | null>("get_setting", { key }),
   setSetting: (key: string, value: string) =>
     invoke<void>("set_setting", { key, value }),
@@ -54,8 +55,14 @@ export const api = {
   // Resolves to the delivery route ("portal" or "fallback").
   sendTestNotification: () => invoke<string>("send_test_notification"),
 
+  // Stops a reminder repeating (see settings::reminder_repeat_minutes).
+  acknowledgeReminder: (id: string) =>
+    invoke<void>("acknowledge_reminder", { id }),
+
   // Per-task stopwatch
   startTimer: (id: string) => invoke<ActiveTimer | null>("start_timer", { id }),
+  pauseTimer: () => invoke<ActiveTimer | null>("pause_timer"),
+  resumeTimer: () => invoke<ActiveTimer | null>("resume_timer"),
   stopTimer: () => invoke<void>("stop_timer"),
   activeTimer: () => invoke<ActiveTimer | null>("active_timer"),
   focusHistory: (limit = 200) =>
