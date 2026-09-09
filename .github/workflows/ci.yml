@@ -14,6 +14,13 @@ jobs:
 
       - name: Install system dependencies
         run: |
+          # Everything below comes from the Ubuntu archive, but apt-get update
+          # exits non-zero if *any* configured source fails. The runner image
+          # ships Google and Microsoft repos whose CDNs intermittently serve an
+          # index that doesn't match their Release file ("Hash Sum mismatch"),
+          # which would fail the build for reasons unrelated to it.
+          sudo rm -f /etc/apt/sources.list.d/*google*.list \
+                     /etc/apt/sources.list.d/*microsoft*.list
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev build-essential curl wget file \
