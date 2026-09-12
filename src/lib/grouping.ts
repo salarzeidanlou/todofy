@@ -57,7 +57,9 @@ export function sectionsForView(tasks: Task[], view: ViewId): Section[] {
   if (view.kind === "upcoming") {
     const byDate = new Map<string, Task[]>();
     for (const task of tasks) {
-      if (!task.dueDate) continue;
+      // Defensive: an overdue task belongs in Today, never silently under a
+      // plain-looking date header here, even if a caller forgets to filter.
+      if (!task.dueDate || task.dueDate <= t) continue;
       const list = byDate.get(task.dueDate) ?? [];
       list.push(task);
       byDate.set(task.dueDate, list);

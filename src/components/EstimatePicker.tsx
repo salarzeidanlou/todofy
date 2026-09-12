@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { formatMinutes, parseMinutes } from "../lib/duration";
 import { TimerIcon } from "./Icons";
+import { Portal } from "./Portal";
 
 /** Common estimates, in minutes. */
 const PRESETS = [15, 30, 45, 60, 90, 120];
+const POPOVER_W = 208;
+const MARGIN = 8;
 
 interface Props {
   value: number | null;
@@ -24,17 +27,51 @@ export function EstimatePicker({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
+  const [pos, setPos] = useState({ top: 0, left: 0 });
   const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
 
   const openPicker = () => {
     setDraft(value ? formatMinutes(value) : "");
+    const r = btnRef.current!.getBoundingClientRect();
+    // Rough initial spot; corrected once measured in the layout effect below.
+    setPos({
+      top: placement === "top" ? r.top - 4 : r.bottom + 4,
+      left: Math.max(MARGIN, Math.min(r.right - POPOVER_W, window.innerWidth - POPOVER_W - MARGIN)),
+    });
     setOpen(true);
   };
+
+  // Once rendered, measure the real popover size and keep it fully on-screen,
+  // preferring the requested side but flipping (and clamping) when it won't fit.
+  useLayoutEffect(() => {
+    if (!open || !ref.current || !btnRef.current) return;
+    const trigger = btnRef.current.getBoundingClientRect();
+    const { offsetHeight: h, offsetWidth: w } = ref.current;
+    let top: number;
+    if (placement === "top") {
+      const above = trigger.top - 4 - h;
+      top = above >= MARGIN ? above : trigger.bottom + 4;
+    } else {
+      const below = trigger.bottom + 4;
+      top =
+        below + h <= window.innerHeight - MARGIN ? below : Math.max(MARGIN, trigger.top - 4 - h);
+    }
+    const left = Math.max(
+      MARGIN,
+      Math.min(trigger.right - w, window.innerWidth - w - MARGIN),
+    );
+    setPos({ top, left });
+  }, [open, placement]);
 
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+      if (
+        !ref.current?.contains(e.target as Node) &&
+        !btnRef.current?.contains(e.target as Node)
+      )
+        setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", onDoc);
@@ -59,8 +96,9 @@ export function EstimatePicker({
   };
 
   return (
-    <div ref={ref} class="relative">
+    <>
       <button
+        ref={btnRef}
         type="button"
         onClick={() => (open ? setOpen(false) : openPicker())}
         class={`flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors hover:bg-[var(--color-surface-2)] ${
@@ -73,10 +111,16 @@ export function EstimatePicker({
       </button>
 
       {open && (
+        <Portal>
         <div
-          class={`absolute right-0 z-50 w-52 animate-fade-rise rounded-xl border border-[var(--color-border-strong)] bg-[var(--color-elevated)] p-2.5 shadow-2xl shadow-black/50 ${
-            placement === "top" ? "bottom-full mb-2" : "top-full mt-1"
-          }`}
+          ref={ref}
+          style={{
+            position: "fixed",
+            top: `${pos.top}px`,
+            left: `${pos.left}px`,
+            width: `${POPOVER_W}px`,
+          }}
+          class="z-[150] animate-fade-rise rounded-xl border border-[var(--color-border-strong)] bg-[var(--color-elevated)] p-2.5 shadow-2xl shadow-black/50"
         >
           <div class="grid grid-cols-3 gap-1">
             {PRESETS.map((minutes) => (
@@ -124,7 +168,8 @@ export function EstimatePicker({
             </button>
           )}
         </div>
+        </Portal>
       )}
-    </div>
+    </>
   );
 }

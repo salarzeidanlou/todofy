@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { formatDue, formatTime, toLocalDate, today } from "../lib/dates";
 import { BellIcon, CalendarIcon, RepeatIcon } from "./Icons";
+import { Portal } from "./Portal";
 import { TimeField } from "./TimeField";
 import { weekdayNames, weekdayOffset } from "../lib/locale";
 import { api } from "../lib/api";
@@ -77,7 +78,7 @@ export function DatePicker({
     const r = btnRef.current!.getBoundingClientRect();
     // Rough initial spot; corrected once measured in the layout effect below.
     setPos({
-      top: r.bottom + 4,
+      top: r.top - 4,
       left: Math.max(8, Math.min(r.left, window.innerWidth - POPOVER_W - MARGIN)),
     });
     setMonth(value ? new Date(value + "T00:00:00") : new Date());
@@ -86,16 +87,12 @@ export function DatePicker({
   };
 
   // Once rendered, measure the real popover size and keep it fully on-screen:
-  // open below the trigger, flip above when there's no room, else clamp.
+  // always open above the trigger, clamped to the top edge if it doesn't fit.
   useLayoutEffect(() => {
     if (!open || !ref.current || !btnRef.current) return;
     const trigger = btnRef.current.getBoundingClientRect();
     const { offsetHeight: h, offsetWidth: w } = ref.current;
-    let top = trigger.bottom + 4;
-    if (top + h > window.innerHeight - MARGIN) {
-      const above = trigger.top - 4 - h;
-      top = above >= MARGIN ? above : Math.max(MARGIN, window.innerHeight - MARGIN - h);
-    }
+    const top = Math.max(MARGIN, trigger.top - 4 - h);
     const left = Math.max(
       MARGIN,
       Math.min(trigger.left, window.innerWidth - w - MARGIN),
@@ -177,7 +174,8 @@ export function DatePicker({
       </button>
 
       {open && (
-        <div
+        <Portal>
+          <div
           ref={ref}
           style={{
             position: "fixed",
@@ -187,7 +185,7 @@ export function DatePicker({
             // Shortcuts, calendar, time and repeat can outgrow a short window.
             maxHeight: `calc(100vh - ${MARGIN * 2}px)`,
           }}
-          class="z-50 animate-fade-rise overflow-y-auto rounded-xl border border-[var(--color-border-strong)] bg-[var(--color-elevated)] p-2.5 shadow-2xl shadow-black/50"
+          class="z-[150] animate-fade-rise overflow-y-auto rounded-xl border border-[var(--color-border-strong)] bg-[var(--color-elevated)] p-2.5 shadow-2xl shadow-black/50"
         >
           {/* Quick shortcuts */}
           <div class="mb-2 flex flex-col gap-0.5">
@@ -403,7 +401,8 @@ export function DatePicker({
               Clear date &amp; time
             </button>
           )}
-        </div>
+          </div>
+        </Portal>
       )}
     </>
   );

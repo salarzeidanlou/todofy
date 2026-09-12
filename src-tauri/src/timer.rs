@@ -177,30 +177,50 @@ fn stop_tracking(conn: &Connection) -> rusqlite::Result<()> {
 
 /// Start tracking a task. Any other open session is stopped first, so at most
 /// one stopwatch exists at a time.
+///
+/// Below, the DB connection is always dropped (block-scoped) before
+/// `tray::refresh`, which locks it again — held across that call, it deadlocks.
 #[tauri::command]
-pub fn start_timer(db: State<Db>, id: String) -> Result<Option<ActiveTimer>, String> {
-    let conn = db.conn();
-    start_tracking(&conn, &id).map_err(|e| e.to_string())?;
-    read_active(&conn).map_err(|e| e.to_string())
+pub fn start_timer(app: AppHandle, db: State<Db>, id: String) -> Result<Option<ActiveTimer>, String> {
+    let active = {
+        let conn = db.conn();
+        start_tracking(&conn, &id).map_err(|e| e.to_string())?;
+        read_active(&conn).map_err(|e| e.to_string())?
+    };
+    crate::tray::refresh(&app);
+    Ok(active)
 }
 
 #[tauri::command]
-pub fn pause_timer(db: State<Db>) -> Result<Option<ActiveTimer>, String> {
-    let conn = db.conn();
-    pause_tracking(&conn).map_err(|e| e.to_string())?;
-    read_active(&conn).map_err(|e| e.to_string())
+pub fn pause_timer(app: AppHandle, db: State<Db>) -> Result<Option<ActiveTimer>, String> {
+    let active = {
+        let conn = db.conn();
+        pause_tracking(&conn).map_err(|e| e.to_string())?;
+        read_active(&conn).map_err(|e| e.to_string())?
+    };
+    crate::tray::refresh(&app);
+    Ok(active)
 }
 
 #[tauri::command]
-pub fn resume_timer(db: State<Db>) -> Result<Option<ActiveTimer>, String> {
-    let conn = db.conn();
-    resume_tracking(&conn).map_err(|e| e.to_string())?;
-    read_active(&conn).map_err(|e| e.to_string())
+pub fn resume_timer(app: AppHandle, db: State<Db>) -> Result<Option<ActiveTimer>, String> {
+    let active = {
+        let conn = db.conn();
+        resume_tracking(&conn).map_err(|e| e.to_string())?;
+        read_active(&conn).map_err(|e| e.to_string())?
+    };
+    crate::tray::refresh(&app);
+    Ok(active)
 }
 
 #[tauri::command]
-pub fn stop_timer(db: State<Db>) -> Result<(), String> {
-    stop_tracking(&db.conn()).map_err(|e| e.to_string())
+pub fn stop_timer(app: AppHandle, db: State<Db>) -> Result<(), String> {
+    {
+        let conn = db.conn();
+        stop_tracking(&conn).map_err(|e| e.to_string())?;
+    }
+    crate::tray::refresh(&app);
+    Ok(())
 }
 
 #[tauri::command]
@@ -328,50 +348,66 @@ fn pause_pomodoro_segment(conn: &Connection) -> rusqlite::Result<()> {
 }
 
 #[tauri::command]
-pub fn pomodoro_start(db: State<Db>) -> Result<Pomodoro, String> {
-    let conn = db.conn();
-    resume_pomodoro_segment(&conn).map_err(|e| e.to_string())?;
-    read_pomodoro(&conn).map_err(|e| e.to_string())
+pub fn pomodoro_start(app: AppHandle, db: State<Db>) -> Result<Pomodoro, String> {
+    let p = {
+        let conn = db.conn();
+        resume_pomodoro_segment(&conn).map_err(|e| e.to_string())?;
+        read_pomodoro(&conn).map_err(|e| e.to_string())?
+    };
+    crate::tray::refresh(&app);
+    Ok(p)
 }
 
 #[tauri::command]
-pub fn pomodoro_pause(db: State<Db>) -> Result<Pomodoro, String> {
-    let conn = db.conn();
-    pause_pomodoro_segment(&conn).map_err(|e| e.to_string())?;
-    read_pomodoro(&conn).map_err(|e| e.to_string())
+pub fn pomodoro_pause(app: AppHandle, db: State<Db>) -> Result<Pomodoro, String> {
+    let p = {
+        let conn = db.conn();
+        pause_pomodoro_segment(&conn).map_err(|e| e.to_string())?;
+        read_pomodoro(&conn).map_err(|e| e.to_string())?
+    };
+    crate::tray::refresh(&app);
+    Ok(p)
 }
 
 /// Reset the current phase's clock (keeps the phase and set progress).
 #[tauri::command]
-pub fn pomodoro_reset(db: State<Db>) -> Result<Pomodoro, String> {
-    let conn = db.conn();
-    conn.execute(
-        "UPDATE pomodoro SET running = 0, start_at = NULL, accumulated = 0, notified = 0 WHERE id = 1",
-        [],
-    )
-    .map_err(|e| e.to_string())?;
-    read_pomodoro(&conn).map_err(|e| e.to_string())
+pub fn pomodoro_reset(app: AppHandle, db: State<Db>) -> Result<Pomodoro, String> {
+    let p = {
+        let conn = db.conn();
+        conn.execute(
+            "UPDATE pomodoro SET running = 0, start_at = NULL, accumulated = 0, notified = 0 WHERE id = 1",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+        read_pomodoro(&conn).map_err(|e| e.to_string())?
+    };
+    crate::tray::refresh(&app);
+    Ok(p)
 }
 
 /// Advance to the next phase (focus -> short/long break -> focus) and start it.
 #[tauri::command]
-pub fn pomodoro_next(db: State<Db>) -> Result<Pomodoro, String> {
-    let conn = db.conn();
-    let p = read_pomodoro(&conn).map_err(|e| e.to_string())?;
-    let (next_phase, completed) = if p.phase == "focus" {
-        let c = p.completed_focus + 1;
-        let long_every = p.long_every.max(1);
-        (if c % long_every == 0 { "long" } else { "short" }, c)
-    } else {
-        ("focus", p.completed_focus)
+pub fn pomodoro_next(app: AppHandle, db: State<Db>) -> Result<Pomodoro, String> {
+    let next = {
+        let conn = db.conn();
+        let p = read_pomodoro(&conn).map_err(|e| e.to_string())?;
+        let (next_phase, completed) = if p.phase == "focus" {
+            let c = p.completed_focus + 1;
+            let long_every = p.long_every.max(1);
+            (if c % long_every == 0 { "long" } else { "short" }, c)
+        } else {
+            ("focus", p.completed_focus)
+        };
+        conn.execute(
+            "UPDATE pomodoro SET phase = ?1, completed_focus = ?2, accumulated = 0,
+                    notified = 0, running = 1, start_at = ?3 WHERE id = 1",
+            params![next_phase, completed, now_iso()],
+        )
+        .map_err(|e| e.to_string())?;
+        read_pomodoro(&conn).map_err(|e| e.to_string())?
     };
-    conn.execute(
-        "UPDATE pomodoro SET phase = ?1, completed_focus = ?2, accumulated = 0,
-                notified = 0, running = 1, start_at = ?3 WHERE id = 1",
-        params![next_phase, completed, now_iso()],
-    )
-    .map_err(|e| e.to_string())?;
-    read_pomodoro(&conn).map_err(|e| e.to_string())
+    crate::tray::refresh(&app);
+    Ok(next)
 }
 
 #[tauri::command]

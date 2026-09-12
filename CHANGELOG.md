@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.10.1 - 2026-09-12
+
+### Fixed
+
+- Tracking a task's time no longer pops open a "Focus" panel with an unrelated, unstarted Pomodoro countdown inside it. The floating timer now only shows the Pomodoro clock once it's actually driving the current session, and reads **Tracking** rather than **Focus** for a plain task session
+- The floating timer no longer disappears just because you clicked elsewhere to switch pages. It stays pinned on screen for the whole time a task or Pomodoro session is running, and only closes on an outside click once nothing is active
+- Pausing or stopping a task's timer from the task itself (rather than the tray menu) now updates the tray right away, instead of leaving it stuck on "Paused" until the app was restarted
+- The date & time picker no longer gets clipped when opened from a task's details. It now opens upward from its button instead of down, and stays fully visible instead of being cut off by the card around it
+- The task estimate popover no longer opens misplaced inside a task's details — it's positioned the same reliable way as the date picker now
+- The date and estimate pickers now appear above other windows, such as the Calendar's event editor, instead of opening hidden behind them
+- Hardened the Upcoming view so an overdue task can't end up grouped under a plain-looking date header there
+
 ## v1.10.0 — 2026-09-09
 
 ### Added

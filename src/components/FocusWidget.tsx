@@ -36,15 +36,19 @@ export function FocusWidget() {
     pauseTaskTimer,
     resumeTaskTimer,
     stopTaskTimer,
+    taskTimerMode,
   } = useStore();
 
   // Tick the countdowns. A paused stopwatch is frozen, so it doesn't count.
   useTick(!!pomodoro?.running || !!activeTimer?.resumedAt);
 
-  // Click anywhere outside the card closes it, same as the ✕ button.
+  // Click anywhere outside the card closes it, same as the ✕ button — but
+  // only when nothing is actually running. A live session stays pinned on
+  // screen while navigating the rest of the app, same as a music player.
+  const hasLiveSession = !!activeTimer || !!pomodoro?.running;
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!showFocus) return;
+    if (!showFocus || hasLiveSession) return;
     const onPointerDown = (e: PointerEvent) => {
       const target = e.target as Node;
       if (rootRef.current?.contains(target)) return;
@@ -53,11 +57,19 @@ export function FocusWidget() {
     };
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [showFocus, toggleFocus]);
+  }, [showFocus, hasLiveSession, toggleFocus]);
 
   if (!showFocus) return null;
 
-  const p = pomodoro;
+  // The Pomodoro card only belongs here when it's actually driving the
+  // current session: bound to the task being tracked (task timer mode is
+  // "pomodoro"), or running standalone from the Focus page. Otherwise a task
+  // stopwatch session would drag in old, unrelated Pomodoro history and read
+  // as a random, unexplained time.
+  const pomodoroInUse = activeTimer
+    ? taskTimerMode === "pomodoro"
+    : !!pomodoro?.running;
+  const p = pomodoroInUse ? pomodoro : null;
   const elapsed = p
     ? p.accumulated + (p.running && p.startAt ? secondsSince(p.startAt) : 0)
     : 0;
@@ -82,7 +94,7 @@ export function FocusWidget() {
       {/* Header */}
       <div class="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-2.5">
         <span class="text-xs font-semibold uppercase tracking-wider text-[var(--color-faint)]">
-          Focus
+          {p ? "Focus" : "Tracking"}
         </span>
         <div class="flex items-center gap-1">
           <button
