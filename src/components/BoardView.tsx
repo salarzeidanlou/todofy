@@ -18,6 +18,7 @@ import { overEstimateBy, trackedElapsed, trackingState } from "../lib/tracking";
 import { useTick } from "../lib/useTick";
 import { repeatLabel } from "../lib/repeat";
 import type { Task } from "../types";
+import { BoardColumnsDialog } from "./BoardColumnsDialog";
 import { SearchBar } from "./SearchBar";
 import { TaskDetail } from "./TaskDetail";
 import {
@@ -28,6 +29,7 @@ import {
   FlagIcon,
   HourglassIcon,
   RepeatIcon,
+  SettingsIcon,
   TimerIcon,
 } from "./Icons";
 
@@ -48,6 +50,11 @@ const DUE_TONE: Record<string, string> = {
 export function BoardView() {
   const {
     tasks,
+    boardDefinitions,
+    boardNotice,
+    clearBoardNotice,
+    loadError,
+    load,
     searchQuery,
     filterLabelIds,
     filterPriorities,
@@ -55,6 +62,7 @@ export function BoardView() {
     select,
     moveTaskToColumn,
   } = useStore();
+  const [management, setManagement] = useState<{ id?: string } | null>(null);
   const [scope, setScopeState] = useState<BoardScope>(readBoardScope);
 
   const setScope = (next: BoardScope) => {
@@ -78,10 +86,13 @@ export function BoardView() {
       ).filter((task) => inScope(task, scope)),
     [tasks, searchQuery, filterLabelIds, filterPriorities, scope, day],
   );
-  const columns = useMemo(() => boardColumns(visible), [visible]);
+  const columns = useMemo(() => boardColumns(visible, boardDefinitions, tasks), [visible, boardDefinitions, tasks]);
+  const moveCard = (id: string, column: string, boardIndex: number) => {
+    void moveTaskToColumn(id, column, boardIndex).catch((e) => useStore.setState({ boardNotice: String(e) }));
+  };
 
   const { dragId, over, setCardRef, setColumnRef, setScrollerRef, startDrag } =
-    useBoardDrag(columns, moveTaskToColumn);
+    useBoardDrag(columns, moveCard);
 
   const selected = selectedId
     ? visible.find((task) => task.id === selectedId)
@@ -110,9 +121,12 @@ export function BoardView() {
             ))}
           </div>
           <SearchBar />
+          <button type="button" class="board-manage-button" onClick={() => { select(null); setManagement({}); }}><SettingsIcon width={16} height={16} />Manage columns</button>
         </div>
       </header>
 
+      {loadError && <div class="load-error" role="alert"><p>{loadError}</p><button type="button" onClick={() => void load()}>Try again</button></div>}
+      {boardNotice && <div class="board-notice" role="status"><span>{boardNotice}</span><button type="button" onClick={clearBoardNotice} aria-label="Dismiss board notice"><CloseIcon width={14} height={14} /></button></div>}
       <div class="board-surface">
         <div class="board-columns" ref={setScrollerRef}>
           {columns.map((column) => {
@@ -133,13 +147,17 @@ export function BoardView() {
                 ref={setColumnRef(column.id)}
                 class={`board-column ${target ? "is-drop-target" : ""}`}
                 aria-label={column.title}
+                style={{ "--column-color": column.color }}
               >
                 <header class="board-column-head">
                   <div>
                     <h3>{column.title}</h3>
-                    <small>{column.hint}</small>
+                    <small>{column.wipLimit !== null ? `${column.tasks.length} shown · ${column.activeCount}/${column.wipLimit} total active` : column.hint}</small>
                   </div>
-                  <span class="board-column-count">{column.tasks.length}</span>
+                  <span class={`board-column-count wip-${column.wipState}`} title={column.wipLimit === null ? "Tasks shown" : `All active tasks: ${column.activeCount}. WIP limit: ${column.wipLimit}. ${column.wipState === "over" ? "Over limit; moves remain allowed." : column.wipState === "full" ? "Column is full." : ""}`}>
+                    {column.wipLimit === null ? column.tasks.length : `${column.activeCount}/${column.wipLimit}`}
+                  </span>
+                  <button type="button" class="board-column-options" aria-label={`Edit ${column.title} column`} title="Column options" onClick={() => { select(null); setManagement({ id: column.id }); }}><SettingsIcon width={14} height={14} /></button>
                 </header>
 
                 <div class="board-column-cards">
@@ -182,9 +200,10 @@ export function BoardView() {
         <span>Drag a card between columns to move it</span>
       </footer>
 
-      {selected && (
+      {management && <BoardColumnsDialog initialId={management.id} onClose={() => setManagement(null)} />}
+      {selected && !management && (
         <TaskModal
-          title={columnOf(selected) === DONE_COLUMN ? "Completed" : "Task"}
+          title={columnOf(selected, boardDefinitions) === DONE_COLUMN ? "Completed" : "Task"}
           taskId={selected.id}
           onClose={() => select(null)}
         />
@@ -220,6 +239,7 @@ function TaskModal({
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
       role="dialog"
       aria-modal="true"
+      data-task-dialog
       aria-label={title}
     >
       <div class="task-modal animate-fade-rise">
@@ -283,9 +303,10 @@ function BoardCard({
       onPointerDown={onPointerDown}
       onClick={onSelect}
       onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          onSelect();
+          if (!event.repeat) onSelect();
         }
       }}
       class={`board-card ${selected ? "is-selected" : ""} ${done ? "is-done" : ""} ${

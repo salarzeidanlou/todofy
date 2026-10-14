@@ -122,9 +122,10 @@ async function audio(): Promise<AudioContext> {
 
 function decodeBase64(data: string): ArrayBuffer {
   const binary = atob(data);
-  const bytes = new Uint8Array(binary.length);
+  const buffer = new ArrayBuffer(binary.length);
+  const bytes = new Uint8Array(buffer);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes.buffer;
+  return buffer;
 }
 
 let customBuffer: { data: string; buffer: AudioBuffer } | null = null;

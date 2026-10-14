@@ -1,26 +1,34 @@
-import type { Task } from "../types";
+import type { BoardColumnDefinition, Task } from "../types";
 import { toLocalDate, today } from "./dates";
 
-/**
- * Stages are slugs on the task rather than rows in a table, so custom names,
- * colors and WIP limits can be layered on later as a lookup without migrating
- * a single task. A null `stage` belongs in the first column.
- */
+export const TODO_COLUMN = "todo";
+export const DONE_COLUMN = "done";
+export type ColumnId = string;
+
 export const STAGES = [
-  { slug: "todo", title: "To do", hint: "Ready to pick up" },
+  { slug: TODO_COLUMN, title: "To do", hint: "Ready to pick up" },
   { slug: "doing", title: "In progress", hint: "Being worked on now" },
   { slug: "blocked", title: "Blocked", hint: "Waiting on something else" },
 ] as const;
 
-export type StageSlug = (typeof STAGES)[number]["slug"];
+export const DEFAULT_COLUMNS: BoardColumnDefinition[] = [
+  ...STAGES.map(({ slug, title }, index) => ({
+    id: slug, name: title, color: ["#6c7cff", "#38bdf8", "#f2b155"][index],
+    orderIndex: index, wipLimit: null, updatedAt: "1970-01-01T00:00:01Z",
+    deletedAt: null, replacementId: null,
+  })),
+  { id: DONE_COLUMN, name: "Done", color: "#4fd18b", orderIndex: 3,
+    wipLimit: null, updatedAt: "1970-01-01T00:00:01Z", deletedAt: null, replacementId: null },
+];
 
-/**
- * Derived from `status`, not stored as a stage. Drops here go through
- * `toggleTask` so a recurring task rolls forward instead of parking.
- */
-export const DONE_COLUMN = "done";
-
-export type ColumnId = StageSlug | typeof DONE_COLUMN;
+export function orderedColumns(definitions: BoardColumnDefinition[]): BoardColumnDefinition[] {
+  const live = definitions.filter((column) => !column.deletedAt);
+  for (const id of [TODO_COLUMN, DONE_COLUMN]) {
+    if (!live.some((column) => column.id === id)) live.push(DEFAULT_COLUMNS.find((column) => column.id === id)!);
+  }
+  return live.sort((a, b) => Number(a.id === DONE_COLUMN) - Number(b.id === DONE_COLUMN) ||
+    a.orderIndex - b.orderIndex || a.id.localeCompare(b.id));
+}
 
 export type BoardScope = "all" | "today" | "week";
 
@@ -46,26 +54,29 @@ export interface BoardColumn {
   id: ColumnId;
   title: string;
   hint: string;
+  color: string;
+  wipLimit: number | null;
+  activeCount: number;
+  wipState: "none" | "below" | "full" | "over";
   tasks: Task[];
 }
 
-/** The columns left to right, as the board lays them out. */
-export const COLUMN_ORDER: ColumnId[] = [
-  ...STAGES.map((s) => s.slug),
-  DONE_COLUMN,
-];
-
-/**
- * The stage a task holds regardless of whether it is finished. An unrecognised
- * slug reads as the first column, so a task never disappears from the board.
- */
-export function stageOf(task: Task): StageSlug {
-  return STAGES.find((s) => s.slug === task.stage)?.slug ?? STAGES[0].slug;
+/** Resolve deleted IDs through their replacement chain; unknown IDs stay visible. */
+export function stageOf(task: Task, definitions = DEFAULT_COLUMNS): ColumnId {
+  let id = task.stage ?? TODO_COLUMN;
+  const seen = new Set<string>();
+  while (!seen.has(id)) {
+    seen.add(id);
+    const column = definitions.find((item) => item.id === id && item.id !== DONE_COLUMN);
+    if (!column) return TODO_COLUMN;
+    if (!column.deletedAt) return column.id;
+    id = column.replacementId ?? TODO_COLUMN;
+  }
+  return TODO_COLUMN;
 }
 
-/** Which column a task renders in. Completed always wins over its stage. */
-export function columnOf(task: Task): ColumnId {
-  return task.status === "done" ? DONE_COLUMN : stageOf(task);
+export function columnOf(task: Task, definitions = DEFAULT_COLUMNS): ColumnId {
+  return task.status === "done" ? DONE_COLUMN : stageOf(task, definitions);
 }
 
 /**
@@ -85,35 +96,40 @@ export function inScope(task: Task, scope: BoardScope): boolean {
  * Group tasks into columns, each sorted by manual order. Done is capped
  * because it grows without limit; the full history has its own view.
  */
-export function boardColumns(tasks: Task[], doneLimit = 15): BoardColumn[] {
+export function boardColumns(
+  tasks: Task[],
+  definitions = DEFAULT_COLUMNS,
+  allTasks = tasks,
+  doneLimit = 15,
+): BoardColumn[] {
   const byColumn = new Map<ColumnId, Task[]>();
+  const totals = new Map<ColumnId, number>();
+  for (const task of allTasks) {
+    if (task.status !== "active") continue;
+    const id = stageOf(task, definitions);
+    totals.set(id, (totals.get(id) ?? 0) + 1);
+  }
   for (const task of tasks) {
-    const id = columnOf(task);
+    const id = columnOf(task, definitions);
     const list = byColumn.get(id) ?? [];
     list.push(task);
     byColumn.set(id, list);
   }
-
-  const columns: BoardColumn[] = STAGES.map(({ slug, title, hint }) => ({
-    id: slug,
-    title,
-    hint,
-    tasks: (byColumn.get(slug) ?? []).sort(
-      (a, b) =>
-        Number(b.pinned) - Number(a.pinned) ||
-        a.boardIndex - b.boardIndex ||
-        a.createdAt.localeCompare(b.createdAt),
-    ),
-  }));
-
-  const done = (byColumn.get(DONE_COLUMN) ?? [])
-    .sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? ""))
-    .slice(0, doneLimit);
-
-  return [
-    ...columns,
-    { id: DONE_COLUMN, title: "Done", hint: "Finished recently", tasks: done },
-  ];
+  return orderedColumns(definitions).map((definition) => {
+    const done = definition.id === DONE_COLUMN;
+    const activeCount = totals.get(definition.id) ?? 0;
+    const wipLimit = done ? null : definition.wipLimit;
+    const items = byColumn.get(definition.id) ?? [];
+    items.sort(done
+      ? (a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? "")
+      : (a, b) => Number(b.pinned) - Number(a.pinned) || a.boardIndex - b.boardIndex || a.createdAt.localeCompare(b.createdAt));
+    return {
+      id: definition.id, title: definition.name, color: definition.color, wipLimit, activeCount,
+      hint: done ? "Finished recently" : STAGES.find((s) => s.slug === definition.id)?.hint ?? "Your workflow",
+      wipState: wipLimit === null ? "none" : activeCount > wipLimit ? "over" : activeCount === wipLimit ? "full" : "below",
+      tasks: done ? items.slice(0, doneLimit) : items,
+    };
+  });
 }
 
 /**
@@ -125,17 +141,19 @@ export function nudgeColumn(
   task: Task,
   tasks: Task[],
   direction: 1 | -1,
+  definitions = DEFAULT_COLUMNS,
 ): { column: ColumnId; boardIndex: number } | null {
-  const current = columnOf(task);
-  const to = COLUMN_ORDER.indexOf(current) + direction;
-  if (to < 0 || to >= COLUMN_ORDER.length) return null;
+  const order = orderedColumns(definitions).map((column) => column.id);
+  const current = columnOf(task, definitions);
+  const to = order.indexOf(current) + direction;
+  if (to < 0 || to >= order.length) return null;
 
   // Leaving Done re-opens the task, and `stage` still records where it was
   // working before it was finished — so it goes back there rather than to
   // whichever column happens to sit to the left of Done.
-  const column = current === DONE_COLUMN ? stageOf(task) : COLUMN_ORDER[to];
+  const column = current === DONE_COLUMN ? stageOf(task, definitions) : order[to];
   const last = tasks
-    .filter((t) => t.id !== task.id && columnOf(t) === column)
+    .filter((t) => t.id !== task.id && columnOf(t, definitions) === column)
     .reduce((max, t) => Math.max(max, t.boardIndex), Number.NEGATIVE_INFINITY);
   return {
     column,

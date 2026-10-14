@@ -7,9 +7,11 @@ import {
   toLocalDate,
   today,
 } from "./lib/dates";
-import { sectionsForView } from "./lib/grouping";
+import { completedTasksPage, sectionsForView } from "./lib/grouping";
 import {
   boardColumns,
+  columnOf,
+  DEFAULT_COLUMNS,
   DONE_COLUMN,
   inScope,
   readBoardScope,
@@ -25,6 +27,8 @@ import {
 import type {
   ActiveReminder,
   ActiveTimer,
+  BoardColumnDefinition,
+  BoardColumnInput,
   Event,
   EventPatch,
   JournalEntry,
@@ -49,12 +53,21 @@ export interface ConfirmOptions {
 }
 
 interface State {
+  boardDefinitions: BoardColumnDefinition[];
+  boardNotice: string | null;
+  clearBoardNotice: () => void;
+  createBoardColumn: (input: BoardColumnInput) => Promise<void>;
+  updateBoardColumn: (id: string, input: BoardColumnInput) => Promise<void>;
+  reorderBoardColumns: (ids: string[]) => Promise<void>;
+  deleteBoardColumn: (id: string, replacementId: string) => Promise<void>;
   tasks: Task[];
   labels: Label[];
   journal: JournalEntry[];
   events: Event[];
   view: ViewId;
   selectedId: string | null;
+  completedPage: number;
+  setCompletedPage: (page: number) => void;
   loading: boolean;
   loadError: string | null;
   reminders: ActiveReminder[];
@@ -147,12 +160,32 @@ interface State {
 }
 
 export const useStore = create<State>((set, get) => ({
+  boardDefinitions: DEFAULT_COLUMNS,
+  boardNotice: null,
+  clearBoardNotice: () => set({ boardNotice: null }),
+  createBoardColumn: async (input) => set({ boardDefinitions: await api.createBoardColumn(input) }),
+  updateBoardColumn: async (id, input) => set({ boardDefinitions: await api.updateBoardColumn(id, input) }),
+  reorderBoardColumns: async (ids) => set({ boardDefinitions: await api.reorderBoardColumns(ids) }),
+  deleteBoardColumn: async (id, replacementId) => {
+    const boardDefinitions = await api.deleteBoardColumn(id, replacementId);
+    set({ boardDefinitions, boardNotice: null });
+    set({ tasks: sortTasks(await api.listTasks()) });
+  },
   tasks: [],
   labels: [],
   journal: [],
   events: [],
   view: { kind: "today" },
   selectedId: null,
+  completedPage: 1,
+  setCompletedPage: (page) => {
+    const state = get();
+    const tasks = applySearchAndFilters(
+      tasksForView(state.tasks, { kind: "completed" }),
+      state.searchQuery, state.filterLabelIds, state.filterPriorities,
+    );
+    set({ completedPage: completedTasksPage(tasks, page).page, selectedId: null });
+  },
   loading: true,
   loadError: null,
   reminders: [],
@@ -188,11 +221,12 @@ export const useStore = create<State>((set, get) => ({
   load: async () => {
     set({ loading: true });
     // Settled, not all: one failing list must not blank the whole app.
-    const [tasks, labels, journal, events] = await Promise.allSettled([
+    const [tasks, labels, journal, events, columns] = await Promise.allSettled([
       api.listTasks(),
       api.listLabels(),
       api.listJournal(),
       api.listEvents(),
+      api.listBoardColumns(),
     ]);
     const failed: string[] = [];
     const keep = <T>(
@@ -208,6 +242,7 @@ export const useStore = create<State>((set, get) => ({
     set({
       tasks: sortTasks(keep(tasks, "tasks", previous.tasks)),
       labels: keep(labels, "labels", previous.labels),
+      boardDefinitions: keep(columns, "board columns", previous.boardDefinitions),
       journal: keep(journal, "journal", previous.journal),
       events: sortEvents(keep(events, "events", previous.events)),
       loading: false,
@@ -217,23 +252,27 @@ export const useStore = create<State>((set, get) => ({
     });
   },
 
-  setView: (view) => set({ view, selectedId: null }),
+  setView: (view) => set({ view, selectedId: null, completedPage: 1 }),
   select: (id) => set({ selectedId: id }),
-  setSearchQuery: (searchQuery) => set({ searchQuery }),
+  setSearchQuery: (searchQuery) => set({ searchQuery, completedPage: 1, selectedId: null }),
   toggleFilterLabel: (id) =>
     set({
+      completedPage: 1,
+      selectedId: null,
       filterLabelIds: get().filterLabelIds.includes(id)
         ? get().filterLabelIds.filter((labelId) => labelId !== id)
         : [...get().filterLabelIds, id],
     }),
   toggleFilterPriority: (priority) =>
     set({
+      completedPage: 1,
+      selectedId: null,
       filterPriorities: get().filterPriorities.includes(priority)
         ? get().filterPriorities.filter((p) => p !== priority)
         : [...get().filterPriorities, priority],
     }),
   clearFilters: () =>
-    set({ searchQuery: "", filterLabelIds: [], filterPriorities: [] }),
+    set({ searchQuery: "", filterLabelIds: [], filterPriorities: [], completedPage: 1, selectedId: null }),
 
   toggleTheme: () => {
     const theme: Theme = get().theme === "dark" ? "light" : "dark";
@@ -306,13 +345,16 @@ export const useStore = create<State>((set, get) => ({
   moveTaskToColumn: async (id, column, boardIndex) => {
     const task = get().tasks.find((t) => t.id === id);
     if (!task) return;
+    const definitions = get().boardDefinitions;
+    const target = definitions.find((c) => c.id === column && !c.deletedAt);
+    if (!target) throw new Error("This column no longer exists.");
+    const changingColumn = columnOf(task, definitions) !== column;
+    set({ boardNotice: null });
 
     if (column === DONE_COLUMN) {
       if (task.status !== "done") await get().toggleTask(id, true);
       return;
     }
-    if (task.status === "done") await get().toggleTask(id, false);
-
     set({
       tasks: sortTasks(
         get().tasks.map((t) =>
@@ -322,10 +364,13 @@ export const useStore = create<State>((set, get) => ({
     });
     try {
       const moved = await api.moveTaskToStage(id, column, boardIndex);
-      set({ tasks: mergeTasks(get().tasks, moved) });
-    } catch {
-      // Fall back to the source of truth if the write failed.
+      const tasks = mergeTasks(get().tasks, moved);
+      const count = tasks.filter((t) => t.status === "active" && columnOf(t, definitions) === column).length;
+      set({ tasks, boardNotice: changingColumn && target.wipLimit !== null && count > target.wipLimit
+        ? `${target.name} is over its WIP limit (${count}/${target.wipLimit}). The task was moved.` : null });
+    } catch (error) {
       await get().load();
+      throw error;
     }
   },
 
@@ -672,21 +717,24 @@ export function navCount(tasks: Task[], view: ViewId): number {
 
 /** Task ids in on-screen order for the active view — drives keyboard nav. */
 export function visibleTaskIds(tasks: Task[], view: ViewId): string[] {
-  const { searchQuery, filterLabelIds, filterPriorities } = useStore.getState();
+  const { searchQuery, filterLabelIds, filterPriorities, completedPage, boardDefinitions } = useStore.getState();
   const inView = applySearchAndFilters(
     tasksForView(tasks, view),
     searchQuery,
     filterLabelIds,
     filterPriorities,
   );
+  if (view.kind === "completed") {
+    return completedTasksPage(inView, completedPage).tasks.map((task) => task.id);
+  }
   // The board keeps Done and walks column by column, so j/k follows the screen.
   if (view.kind === "board") {
-    return boardColumns(inView.filter((t) => inScope(t, readBoardScope())))
+    return boardColumns(inView.filter((t) => inScope(t, readBoardScope())), boardDefinitions)
       .flatMap((column) => column.tasks)
       .map((t) => t.id);
   }
   const relevant =
-    view.kind === "completed" || view.kind === "pinned"
+    view.kind === "pinned"
       ? inView
       : inView.filter((t) => t.status === "active");
   return sectionsForView(relevant, view)

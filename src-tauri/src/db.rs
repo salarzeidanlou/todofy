@@ -172,6 +172,7 @@ pub fn init(conn: &Connection) -> rusqlite::Result<()> {
         ",
     )?;
     migrate(conn)?;
+    crate::board::init(conn)?;
     Ok(())
 }
 

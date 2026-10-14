@@ -93,8 +93,50 @@ pub struct SyncTombstone {
     pub deleted_at: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SyncBoardColumn {
+    pub id: String,
+    pub name: String,
+    pub color: String,
+    pub order_index: f64,
+    pub wip_limit: Option<i64>,
+    pub updated_at: String,
+    pub deleted_at: Option<String>,
+    pub replacement_id: Option<String>,
+}
+impl From<crate::board::BoardColumn> for SyncBoardColumn {
+    fn from(c: crate::board::BoardColumn) -> Self {
+        Self {
+            id: c.id,
+            name: c.name,
+            color: c.color,
+            order_index: c.order_index,
+            wip_limit: c.wip_limit,
+            updated_at: c.updated_at,
+            deleted_at: c.deleted_at,
+            replacement_id: c.replacement_id,
+        }
+    }
+}
+impl From<&SyncBoardColumn> for crate::board::BoardColumn {
+    fn from(c: &SyncBoardColumn) -> Self {
+        Self {
+            id: c.id.clone(),
+            name: c.name.clone(),
+            color: c.color.clone(),
+            order_index: c.order_index,
+            wip_limit: c.wip_limit,
+            updated_at: c.updated_at.clone(),
+            deleted_at: c.deleted_at.clone(),
+            replacement_id: c.replacement_id.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct SyncBundle {
+    #[serde(default)]
+    pub board_columns: Vec<SyncBoardColumn>,
     pub tasks: Vec<SyncTask>,
     pub labels: Vec<SyncLabel>,
     pub task_labels: Vec<SyncTaskLabel>,
@@ -348,7 +390,14 @@ fn collect_changes(conn: &Connection, since: &str) -> rusqlite::Result<SyncBundl
         }
     }
 
+    let first_board_sync = settings::read(conn, crate::board::SYNC_READY_KEY).is_none();
+    let board_columns = crate::board::list(conn)?
+        .into_iter()
+        .filter(|c| first_board_sync || newer(&c.updated_at, since))
+        .map(SyncBoardColumn::from)
+        .collect();
     Ok(SyncBundle {
+        board_columns,
         tasks,
         labels,
         task_labels,
@@ -424,6 +473,9 @@ fn local_updated_at(conn: &Connection, sql: &str, key: &[&dyn rusqlite::ToSql]) 
 }
 
 fn apply_bundle(conn: &Connection, remote: &SyncBundle) -> rusqlite::Result<()> {
+    for column in &remote.board_columns {
+        crate::board::apply_remote(conn, &column.into())?;
+    }
     for l in &remote.labels {
         let local = local_updated_at(
             conn,
@@ -670,7 +722,8 @@ fn has_local_sync_data(conn: &Connection) -> rusqlite::Result<bool> {
              OR EXISTS(SELECT 1 FROM labels)
              OR EXISTS(SELECT 1 FROM task_labels)
              OR EXISTS(SELECT 1 FROM time_sessions)
-             OR EXISTS(SELECT 1 FROM journal_entries)",
+             OR EXISTS(SELECT 1 FROM journal_entries)
+             OR EXISTS(SELECT 1 FROM board_columns WHERE updated_at != '1970-01-01T00:00:01Z')",
         [],
         |row| row.get::<_, bool>(0),
     )
@@ -709,9 +762,15 @@ fn use_account_data_inner(conn: &mut Connection, user_id: &str) -> rusqlite::Res
         "tasks",
         "labels",
         "journal_entries",
+        "board_columns",
     ] {
         tx.execute(&format!("DELETE FROM {table}"), [])?;
     }
+    crate::board::init(&tx)?;
+    tx.execute(
+        "DELETE FROM settings WHERE key = ?1",
+        [crate::board::SYNC_READY_KEY],
+    )?;
     settings::write(&tx, OWNER_KEY, user_id)?;
     settings::write(&tx, WATERMARK_KEY, EPOCH)?;
     tx.commit()
@@ -773,7 +832,48 @@ fn copy_local_data_inner(conn: &mut Connection, user_id: &str) -> rusqlite::Resu
         rows
     };
 
+    let columns = crate::board::list(&tx)?;
+    let column_map: HashMap<String, String> = columns
+        .iter()
+        .filter(|c| c.deleted_at.is_none() && uuid::Uuid::parse_str(&c.id).is_ok())
+        .map(|c| (c.id.clone(), crate::db::new_uuid()))
+        .collect();
+    let task_stages: Vec<(String, Option<String>)> = tx
+        .prepare("SELECT id, stage FROM tasks")?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    for (id, stage) in task_stages {
+        let resolved = crate::board::resolve_stage(stage.as_deref(), &columns);
+        let target = column_map
+            .get(resolved)
+            .map(String::as_str)
+            .unwrap_or(resolved);
+        tx.execute(
+            "UPDATE tasks SET stage = ?1 WHERE id = ?2",
+            params![target, id],
+        )?;
+    }
+    tx.execute(
+        "DELETE FROM board_columns WHERE deleted_at IS NOT NULL AND id NOT IN ('doing','blocked')",
+        [],
+    )?;
     let now = chrono::Utc::now().to_rfc3339();
+    for (old, new) in &column_map {
+        tx.execute(
+            "UPDATE board_columns SET id = ?1 WHERE id = ?2",
+            params![new, old],
+        )?;
+        tx.execute(
+            "UPDATE board_columns SET replacement_id = ?1 WHERE replacement_id = ?2",
+            params![new, old],
+        )?;
+    }
+    tx.execute("UPDATE board_columns SET updated_at = ?1", [&now])?;
+    tx.execute(
+        "DELETE FROM settings WHERE key = ?1",
+        [crate::board::SYNC_READY_KEY],
+    )?;
+
     for (old_task, old_label) in associations {
         let (Some(new_task), Some(new_label)) =
             (task_map.get(&old_task), label_map.get(&old_label))
@@ -828,19 +928,33 @@ fn copy_local_data_inner(conn: &mut Connection, user_id: &str) -> rusqlite::Resu
 /// The high-water mark: local rows changed at or before this were last synced.
 #[tauri::command]
 pub fn sync_get_watermark(db: State<Db>) -> Result<String, String> {
-    Ok(settings::read(&db.conn(), WATERMARK_KEY).unwrap_or_else(|| EPOCH.to_string()))
+    let conn = db.conn();
+    if settings::read(&conn, crate::board::SYNC_READY_KEY).is_none() {
+        return Ok(EPOCH.to_string());
+    }
+    Ok(settings::read(&conn, WATERMARK_KEY).unwrap_or_else(|| EPOCH.to_string()))
 }
 
 #[tauri::command]
 pub fn sync_set_watermark(db: State<Db>, value: String) -> Result<(), String> {
-    settings::write(&db.conn(), WATERMARK_KEY, &value).map_err(|e| e.to_string())
+    let conn = db.conn();
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    settings::write(&tx, WATERMARK_KEY, &value).map_err(|e| e.to_string())?;
+    settings::write(&tx, crate::board::SYNC_READY_KEY, "1").map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())
 }
 
 /// Forget the watermark so the next round re-pulls and re-pushes everything —
 /// used when a different account signs in on this device.
 #[tauri::command]
 pub fn sync_reset(db: State<Db>) -> Result<(), String> {
-    settings::write(&db.conn(), WATERMARK_KEY, EPOCH).map_err(|e| e.to_string())
+    let conn = db.conn();
+    conn.execute(
+        "DELETE FROM settings WHERE key = ?1",
+        [crate::board::SYNC_READY_KEY],
+    )
+    .map_err(|e| e.to_string())?;
+    settings::write(&conn, WATERMARK_KEY, EPOCH).map_err(|e| e.to_string())
 }
 
 /// Clears user-created local data when a user deletes their account and opts in.
@@ -857,10 +971,15 @@ fn wipe_local_data_inner(conn: &Connection) -> rusqlite::Result<()> {
         "tasks",
         "labels",
         "journal_entries",
+        "board_columns",
     ] {
         conn.execute(&format!("DELETE FROM {table}"), [])?;
     }
-    conn.execute("DELETE FROM settings WHERE key = ?1", [OWNER_KEY])?;
+    crate::board::init(conn)?;
+    conn.execute(
+        "DELETE FROM settings WHERE key IN (?1, ?2)",
+        params![OWNER_KEY, crate::board::SYNC_READY_KEY],
+    )?;
     settings::write(conn, WATERMARK_KEY, EPOCH)
 }
 
@@ -1015,6 +1134,7 @@ mod tests {
     fn apply_inserts_then_lww_updates() {
         let conn = setup();
         let bundle = SyncBundle {
+            board_columns: vec![],
             labels: vec![SyncLabel {
                 id: "l1".into(),
                 name: "home".into(),
@@ -1427,5 +1547,163 @@ mod tests {
         };
         // Live row and the recent tombstone stay; only the long-dead one goes.
         assert_eq!(ids, vec!["fresh_del", "live"]);
+    }
+}
+
+#[cfg(test)]
+mod column_sync_tests {
+    use super::*;
+    use crate::{board, db};
+    fn setup() -> Connection {
+        let c = Connection::open_in_memory().unwrap();
+        db::init(&c).unwrap();
+        c
+    }
+    fn custom(c: &Connection) -> board::BoardColumn {
+        board::create(
+            c,
+            &board::ColumnInput {
+                name: "Review".into(),
+                color: "#f26cc9".into(),
+                wip_limit: Some(2),
+            },
+        )
+        .unwrap()
+        .into_iter()
+        .find(|x| x.name == "Review")
+        .unwrap()
+    }
+    #[test]
+    fn column_metadata_round_trips_and_seeds_cannot_overwrite_customized_defaults() {
+        let source = setup();
+        board::update(
+            &source,
+            board::TODO,
+            &board::ColumnInput {
+                name: "Backlog".into(),
+                color: "#38bdf8".into(),
+                wip_limit: Some(4),
+            },
+        )
+        .unwrap();
+        let custom = custom(&source);
+        let bundle = collect_changes(&source, EPOCH).unwrap();
+        let fresh = setup();
+        apply_bundle(&fresh, &bundle).unwrap();
+        assert_eq!(
+            board::list(&fresh)
+                .unwrap()
+                .iter()
+                .find(|x| x.id == "todo")
+                .unwrap()
+                .name,
+            "Backlog"
+        );
+        assert_eq!(
+            board::list(&fresh)
+                .unwrap()
+                .iter()
+                .find(|x| x.id == custom.id)
+                .unwrap()
+                .wip_limit,
+            Some(2)
+        );
+        let seeds = collect_changes(&setup(), EPOCH).unwrap();
+        apply_bundle(&fresh, &seeds).unwrap();
+        assert_eq!(
+            board::list(&fresh)
+                .unwrap()
+                .iter()
+                .find(|x| x.id == "todo")
+                .unwrap()
+                .name,
+            "Backlog"
+        );
+    }
+    #[test]
+    fn deleted_columns_resolve_late_tasks_and_cannot_be_resurrected_by_newer_edits() {
+        let mut source = setup();
+        let column = custom(&source);
+        let live = collect_changes(&source, EPOCH).unwrap();
+        board::delete(&mut source, &column.id, "doing").unwrap();
+        let deleted = collect_changes(&source, EPOCH).unwrap();
+        let fresh = setup();
+        apply_bundle(&fresh, &deleted).unwrap();
+        let mut stale = live;
+        stale
+            .board_columns
+            .iter_mut()
+            .for_each(|c| c.updated_at = "2099-01-01T00:00:00Z".into());
+        apply_bundle(&fresh, &stale).unwrap();
+        assert_eq!(
+            board::resolve_stage(Some(&column.id), &board::list(&fresh).unwrap()),
+            "doing"
+        );
+    }
+    #[test]
+    fn copying_accounts_rekeys_custom_columns_and_task_stages_together() {
+        let mut c = setup();
+        let column = custom(&c);
+        c.execute("INSERT INTO tasks(id,title,stage,created_at,updated_at) VALUES('task','Task',?1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')", [&column.id]).unwrap();
+        board::delete(&mut c, "blocked", &column.id).unwrap();
+        copy_local_data_inner(&mut c, "11111111-1111-4111-8111-111111111111").unwrap();
+        let copied = board::list(&c)
+            .unwrap()
+            .into_iter()
+            .find(|x| x.name == "Review")
+            .unwrap();
+        assert_ne!(copied.id, column.id);
+        assert_eq!(
+            board::list(&c)
+                .unwrap()
+                .iter()
+                .find(|x| x.id == "blocked")
+                .unwrap()
+                .replacement_id
+                .as_deref(),
+            Some(copied.id.as_str())
+        );
+        let stage: String = c
+            .query_row("SELECT stage FROM tasks", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(stage, copied.id);
+        db::init(&c).unwrap();
+        assert!(board::list(&c)
+            .unwrap()
+            .iter()
+            .find(|x| x.id == "blocked")
+            .unwrap()
+            .deleted_at
+            .is_some());
+        use_account_data_inner(&mut c, "22222222-2222-4222-8222-222222222222").unwrap();
+        assert_eq!(board::list(&c).unwrap().len(), 4);
+        assert_eq!(
+            board::list(&c)
+                .unwrap()
+                .iter()
+                .find(|x| x.id == "todo")
+                .unwrap()
+                .name,
+            "To do"
+        );
+    }
+    #[test]
+    fn first_column_sync_includes_seeds_below_the_task_watermark_then_backs_off() {
+        let c = setup();
+        assert_eq!(
+            collect_changes(&c, "2026-01-01T00:00:00Z")
+                .unwrap()
+                .board_columns
+                .len(),
+            4
+        );
+        settings::write(&c, board::SYNC_READY_KEY, "1").unwrap();
+        assert!(collect_changes(&c, "2026-01-01T00:00:00Z")
+            .unwrap()
+            .board_columns
+            .is_empty());
+        assert!(!has_local_sync_data(&c).unwrap());
+        custom(&c);
+        assert!(has_local_sync_data(&c).unwrap());
     }
 }

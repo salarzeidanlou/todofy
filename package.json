@@ -2,7 +2,7 @@
   "name": "todofy",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
-  "version": "1.13.1",
+  "version": "1.14.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -31,6 +31,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/cli": "^2",
     "@types/bun": "^1.4.2",
+    "happy-dom": "^21.0.1",
     "tailwindcss": "^4.3.3",
     "typescript": "~5.6.2",
     "vite": "^6.0.3"

@@ -19,6 +19,7 @@ interface SyncTombstone extends SyncRow {
 }
 
 interface Bundle {
+  board_columns: SyncRow[];
   tasks: SyncRow[];
   labels: SyncRow[];
   task_labels: SyncRow[];
@@ -235,6 +236,7 @@ function bundlesOverlap(a: Bundle, b: Bundle): boolean {
   const tombstone = (row: SyncRow) =>
     `${row.entity_type ?? ""}:${row.entity_id ?? ""}`;
   return (
+    overlaps(a.board_columns.filter((c) => !["todo", "doing", "blocked", "done"].includes(String(c.id))), b.board_columns, id) ||
     overlaps(a.tasks, b.tasks, id) ||
     overlaps(a.labels, b.labels, id) ||
     overlaps(a.sessions, b.sessions, id) ||
@@ -250,6 +252,7 @@ async function pull(since: string): Promise<Bundle> {
   if (error) throw new Error(error.message);
   const bundle = (data ?? {}) as Partial<Bundle>;
   return {
+    board_columns: bundle.board_columns ?? [],
     labels: bundle.labels ?? [],
     tasks: bundle.tasks ?? [],
     task_labels: bundle.task_labels ?? [],
@@ -260,6 +263,11 @@ async function pull(since: string): Promise<Bundle> {
 }
 
 async function push(local: Bundle): Promise<void> {
+  // Server-side LWW protects customized defaults from a fresh device's seeds.
+  if (local.board_columns.length) {
+    const { error } = await supabase.rpc("sync_board_columns", { changes: local.board_columns });
+    if (error) throw new Error(`Could not sync board columns. Apply the custom_board_columns database migration. ${error.message}`);
+  }
   const upsert = async (
     table: string,
     rows: SyncRow[],
@@ -448,6 +456,7 @@ export function initSync() {
   // A change to the task, label, or journal lists means a local edit to push.
   useStore.subscribe((state, prev) => {
     if (
+      state.boardDefinitions !== prev.boardDefinitions ||
       state.tasks !== prev.tasks ||
       state.labels !== prev.labels ||
       state.journal !== prev.journal

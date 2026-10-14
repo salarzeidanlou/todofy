@@ -1,8 +1,9 @@
 import type { ComponentChildren } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useState } from "preact/hooks";
 import { useStore } from "../store";
 import { combineDateTime, formatDue, isPast, timeOf, today } from "../lib/dates";
-import type { RepeatRule, Subtask } from "../types";
+import type { RepeatRule, Subtask, Task } from "../types";
+import { useTextDraft } from "../lib/useTextDraft";
 import {
   CalendarIcon,
   CheckIcon,
@@ -44,10 +45,16 @@ export function TaskDetail({
   taskId?: string;
   compact?: boolean;
 }) {
+  const task = useStore((state) =>
+    state.tasks.find((item) => item.id === (taskId ?? state.selectedId)),
+  );
+  // Drafts and expanded state belong to one task, including during saves.
+  return task ? <TaskDetailContent key={task.id} task={task} compact={compact} /> : null;
+}
+
+function TaskDetailContent({ task, compact }: { task: Task; compact?: boolean }) {
   const {
-    tasks,
     labels,
-    selectedId,
     patchTask,
     removeTask,
     toggleTask,
@@ -60,19 +67,10 @@ export function TaskDetail({
     resumeTaskTimer,
     stopTaskTimer,
   } = useStore();
-  const task = tasks.find((item) => item.id === (taskId ?? selectedId));
-  const [title, setTitle] = useState("");
-  const [notes, setNotes] = useState("");
+  const title = useTextDraft(task.title);
+  const notes = useTextDraft(task.notes ?? "");
   const [expanded, setExpanded] = useState(false);
-
-  useEffect(() => {
-    if (!task) return;
-    setTitle(task.title);
-    setNotes(task.notes ?? "");
-    setExpanded(false);
-  }, [task?.id]);
-
-  if (!task) return null;
+  const [saveError, setSaveError] = useState<string | null>(null);
   const done = task.status === "done";
   const tracking = trackingState(task.id, activeTimer);
   const nextStep = task.subtasks.find((subtask) => !subtask.done);
@@ -84,13 +82,23 @@ export function TaskDetail({
   const lateReminder = !done && isPast(task.remindAt);
   const due = task.dueDate ? formatDue(task.dueDate, done ? null : task.remindAt) : null;
 
-  const saveTitle = () => {
-    const value = title.trim();
-    if (value && value !== task.title) patchTask({ id: task.id, title: value });
-    else if (!value) setTitle(task.title);
+  const saveTitle = async () => {
+    const value = title.value.trim();
+    if (!value) return title.reset();
+    try {
+      await title.save(value, (title) => patchTask({ id: task.id, title }));
+      setSaveError(null);
+    } catch {
+      setSaveError("Could not save the title. Your edit is still here; try again.");
+    }
   };
-  const saveNotes = () => {
-    if (notes !== (task.notes ?? "")) patchTask({ id: task.id, notes: notes || null });
+  const saveNotes = async () => {
+    try {
+      await notes.save(notes.value, (notes) => patchTask({ id: task.id, notes: notes || null }));
+      setSaveError(null);
+    } catch {
+      setSaveError("Could not save the notes. Your edit is still here; try again.");
+    }
   };
   const onDate = (value: string | null) => {
     if (!value) return patchTask({ id: task.id, dueDate: null, remindAt: null });
@@ -143,8 +151,8 @@ export function TaskDetail({
           <div class="next-up-copy">
             <input
               id="detail-title"
-              value={title}
-              onInput={(event) => setTitle(event.currentTarget.value)}
+              value={title.value}
+              onInput={(event) => title.setValue(event.currentTarget.value)}
               onBlur={saveTitle}
               onKeyDown={(event) => event.key === "Enter" && event.currentTarget.blur()}
               aria-label="Task title"
@@ -152,13 +160,14 @@ export function TaskDetail({
             <div class="inline-note">
               <NoteIcon width={15} height={15} />
               <input
-                value={notes}
-                onInput={(event) => setNotes(event.currentTarget.value)}
+                value={notes.value}
+                onInput={(event) => notes.setValue(event.currentTarget.value)}
                 onBlur={saveNotes}
                 placeholder="Add a short note…"
                 aria-label="Task notes"
               />
             </div>
+            {saveError && <p role="alert" class="text-xs text-(--color-danger)">{saveError}</p>}
           </div>
           <div class="session-controls">
             <button

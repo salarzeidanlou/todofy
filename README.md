@@ -27,6 +27,7 @@ Plan your work as a list, a board, or a calendar. Stay focused with timers and r
 
 - 🗓️ **Smart views** — _Today_ (with overdue rollup), _Upcoming_ (grouped by date), and _Inbox_
 - 📋 **Kanban board** — see your work as cards across _To do_, _In progress_, _Blocked_ and _Done_. Drag a card down its column to reorder it or across to change its stage; dropping into _Done_ completes the task properly, so a repeating task still rolls forward to its next occurrence and dragging it back out re‑opens it. Cards carry the same detail as list rows — priority, due date, labels, checklist progress, estimate, and live tracked time — and clicking one opens the full task in a dialog. Narrow the board to _Today_ or _This week_, search and filter as you would anywhere else, or move the selected card with **H** / **L**. The board keeps its own arrangement, so rearranging cards never disturbs your list order
+- 🎨 **Custom board columns** — create, rename, recolor, and reorder workflow columns, with optional WIP limits that count all active tasks and warn without blocking moves. Column settings sync with your account; deleting a column safely moves its tasks to a destination you choose. To do stays the default destination and Done keeps its completion behavior.
 - ⚡ **Global quick‑add** — hit **Ctrl+Alt+A** anywhere (even with todofy tucked in the tray) for a floating capture bar; type, press Enter, and you're back to what you were doing
 - ✍️ **Natural‑language quick‑add** — type _"pay rent friday 5pm #home p1"_ and the date, time, priority, and label are parsed out live and shown as chips
 - 🎙️ **Optional local voice input** — download the free whisper.cpp engine and a multilingual model in Settings, then enable Voice Mode to dictate a task or journal draft. A live waveform stays inside the editor while you speak. Nothing downloads or requests microphone access until you choose to use it
@@ -52,7 +53,7 @@ Plan your work as a list, a board, or a calendar. Stay focused with timers and r
 - ⌨️ **Keyboard‑first** — add, navigate, complete, and edit without touching the mouse
 - 🪟 **System tray** — closes to tray and keeps running so reminders never miss; start/pause the Pomodoro, pause or stop the task timer, and watch the live countdown right from the tray
 - 🧭 **Date-oriented navigation** — move between smart views from the top navigation bar and use the day rail to jump through your schedule
-- ☁️ **Optional account sync** — official Todofy Cloud Sync is a Pro feature at **€3.99/month or €39/year**; local use stays free, and the source-available self-hosting setup remains documented below. Buy securely in Lemon Squeezy before or after creating an account, then return to Todofy, sign in, and activate the emailed license for that account. Sign in with email/password or **Continue with Google** to sync tasks, labels, focus history, and journal across devices (backed by Supabase, with row‑level security). Sessions are kept in your OS secret store. If you switch accounts on one installation, Todofy pauses before syncing and lets you load the new account's cloud data or safely copy the current device data into it with new record IDs
+- ☁️ **Optional account sync** — official Todofy Cloud Sync is a Pro feature at **€3.99/month or €39/year**; local use stays free, and the source-available self-hosting setup remains documented below. Buy securely in Lemon Squeezy before or after creating an account, then return to Todofy, sign in, and activate the emailed license for that account. Sign in with email/password or **Continue with Google** to sync tasks, board column settings, labels, focus history, and journal across devices (backed by Supabase, with row‑level security). Sessions are kept in your OS secret store. If you switch accounts on one installation, Todofy pauses before syncing and lets you load the new account's cloud data or safely copy the current device data into it with new record IDs
 - 🗓️ **Local calendar** — plan in month, week, or day views, with tasks on their due dates and standalone all-day or timed events you can create and edit. Standalone events stay on this device and are not included in account sync or pushed to Google
 - 📅 **Google Calendar sync** — push your dated tasks to a dedicated **todofy** calendar (one‑way) so they sit right beside your meetings: all‑day for date‑only tasks, timed for tasks with a reminder. Recurring tasks move as they roll, completed and deleted tasks tidy themselves up, and you can keep finished tasks or limit the push to timed tasks only. Opt‑in, gated behind account sign‑in
 - 🗑️ **Delete your account** — cancel any linked recurring Todofy subscription first, then remove your current account and all of its cloud data; optionally wipe the copy on this device too. If cancellation cannot be confirmed, deletion stops safely so you can retry. You can register a fresh account later with the same email address
@@ -142,20 +143,20 @@ Grab a package from the [Releases](../../releases) page, or build it yourself (s
 **AppImage** — portable, runs on any distro:
 
 ```bash
-chmod +x todofy_1.13.0_amd64.AppImage
-./todofy_1.13.0_amd64.AppImage
+chmod +x todofy_1.14.0_amd64.AppImage
+./todofy_1.14.0_amd64.AppImage
 ```
 
 **Debian / Ubuntu:**
 
 ```bash
-sudo dpkg -i todofy_1.13.0_amd64.deb
+sudo dpkg -i todofy_1.14.0_amd64.deb
 ```
 
 **Fedora / RHEL / openSUSE:**
 
 ```bash
-sudo rpm -i todofy-1.13.0-1.x86_64.rpm
+sudo rpm -i todofy-1.14.0-1.x86_64.rpm
 ```
 
 **macOS** — open the `.dmg` and drag todofy into Applications. It's not
@@ -163,14 +164,14 @@ notarized yet, so on first launch right‑click the app and choose **Open** to
 get past Gatekeeper:
 
 ```
-todofy_1.13.0_universal.dmg  # Intel and Apple Silicon
+todofy_1.14.0_universal.dmg  # Intel and Apple Silicon
 ```
 
 **Windows** — run the installer:
 
 ```
-todofy_1.13.0_x64-setup.exe   # NSIS installer
-todofy_1.13.0_x64_en-US.msi   # or the MSI
+todofy_1.14.0_x64-setup.exe   # NSIS installer
+todofy_1.14.0_x64_en-US.msi   # or the MSI
 ```
 
 > Your tasks live in the app's data directory — `~/.local/share/com.unifybrowse.todofy/`
@@ -357,7 +358,7 @@ bunx tauri icon app-icon.svg
 todofy/
 ├── src/                    # Preact frontend
 │   ├── components/         # UI (Sidebar, TaskList, TaskDetail, DatePicker,
-│   │                       #     BoardView, CalendarView, FocusView,
+│   │                       #     BoardView, BoardColumnsDialog, CalendarView, FocusView,
 │   │                       #     JournalView, SettingsView, …)
 │   ├── lib/                # dates, duration, locale, sound, tracking, theme,
 │   │                       #     keyboard, nlp, repeat, markdown, journal,
@@ -368,6 +369,7 @@ todofy/
 │   └── src/
 │       ├── commands.rs     # task & label CRUD (Tauri commands)
 │       ├── db.rs           # SQLite schema & migrations
+│       ├── board.rs        # column settings, ordering & safe deletion
 │       ├── recur.rs        # recurring-task date math
 │       ├── timer.rs        # focus timers (Pomodoro + per-task stopwatch)
 │       ├── settings.rs     # app settings & run-on-startup
@@ -400,8 +402,11 @@ todofy/
 - [x] Task estimates with elapsed-vs-estimate tracking
 - [x] System clock and calendar conventions (12/24h, week start)
 - [x] Repeating reminders with sound, volume, and ramp-up
+- [x] Optional on-device voice input
+- [x] Signed app updates with optional automatic installation
 - [x] Kanban board with drag between columns
-- [ ] Custom board columns (rename, recolor, reorder, and WIP limits)
+- [x] Custom board columns (create, rename, recolor, reorder, safely delete, and sync) — v1.14.0
+- [x] Optional WIP limits with total active-task counts and warnings — v1.14.0
 - [ ] Priority profiles (per-priority names, colors, sounds, and notification styles)
 
 ## 🤝 Contributing

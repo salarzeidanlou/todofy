@@ -32,6 +32,8 @@ function focusById(id: string) {
 export function useKeyboard() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Local controls own handled keys (e.g. Enter opens a board card).
+      if (e.defaultPrevented || e.isComposing) return;
       // The first-run tour drives its own keys and owns the screen.
       if (useOnboarding.getState().open) return;
 
@@ -44,6 +46,17 @@ export function useKeyboard() {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       const s = useStore.getState();
+      // Confirmation and account dialogs must not edit the task behind them.
+      // The board's task dialog still supports task shortcuts and Escape.
+      if (
+        s.confirm ||
+        document.querySelector('[aria-modal="true"]:not([data-task-dialog])')
+      ) return;
+      if (
+        e.key === "Enter" &&
+        e.target instanceof Element &&
+        e.target.closest('button, a[href], [role="button"]')
+      ) return;
 
       // The shortcuts cheat-sheet: "?" opens it, Escape closes it (and takes
       // priority over the panel-close Escape below).
@@ -61,6 +74,8 @@ export function useKeyboard() {
       }
 
       const ids = visibleTaskIds(s.tasks, s.view);
+      const selectedId =
+        s.selectedId && ids.includes(s.selectedId) ? s.selectedId : null;
       const move = (dir: 1 | -1) => {
         if (ids.length === 0) return;
         const i = s.selectedId ? ids.indexOf(s.selectedId) : -1;
@@ -76,11 +91,12 @@ export function useKeyboard() {
       // On the board, h/l nudge the selected card to the neighbouring column —
       // the keyboard equivalent of dragging it.
       const nudge = (direction: 1 | -1) => {
-        if (s.view.kind !== "board" || !s.selectedId) return;
-        const task = s.tasks.find((x) => x.id === s.selectedId);
+        if (s.view.kind !== "board" || !selectedId) return;
+        const task = s.tasks.find((x) => x.id === selectedId);
         if (!task) return;
-        const target = nudgeColumn(task, s.tasks, direction);
-        if (target) s.moveTaskToColumn(task.id, target.column, target.boardIndex);
+        const target = nudgeColumn(task, s.tasks, direction, s.boardDefinitions);
+        if (target) void s.moveTaskToColumn(task.id, target.column, target.boardIndex)
+          .catch((error) => useStore.setState({ boardNotice: String(error) }));
       };
 
       switch (e.key) {
@@ -128,31 +144,31 @@ export function useKeyboard() {
           }
           break;
         case "e":
-          if (s.selectedId) {
+          if (selectedId) {
             e.preventDefault();
             focusById("detail-title");
           }
           break;
         case "c":
         case "Enter":
-          if (s.selectedId) {
+          if (selectedId && !e.repeat) {
             e.preventDefault();
-            const t = s.tasks.find((x) => x.id === s.selectedId);
+            const t = s.tasks.find((x) => x.id === selectedId);
             if (t) s.toggleTask(t.id, t.status !== "done");
           }
           break;
         case "p":
-          if (s.selectedId) {
+          if (selectedId && !e.repeat) {
             e.preventDefault();
-            const t = s.tasks.find((x) => x.id === s.selectedId);
+            const t = s.tasks.find((x) => x.id === selectedId);
             if (t) s.patchTask({ id: t.id, pinned: !t.pinned });
           }
           break;
         case "Backspace":
         case "Delete":
-          if (s.selectedId) {
+          if (selectedId && !e.repeat) {
             e.preventDefault();
-            const id = s.selectedId;
+            const id = selectedId;
             const t = s.tasks.find((x) => x.id === id);
             s.requestConfirm({
               title: "Delete task?",

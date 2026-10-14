@@ -77,6 +77,12 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="1.14.0" date="2026-10-14">
+      <description>
+        <p>Custom board columns with names, colors, ordering, safe deletion, Cloud Sync and optional WIP limits.</p>
+        <p>Improved task editing, keyboard controls and completed-task navigation; removed shadows behind floating capture and notification cards.</p>
+      </description>
+    </release>
     <release version="1.13.0" date="2026-09-20">
       <description>
         <p>Optional on-device voice input for tasks and journal entries, managed from Settings.</p>

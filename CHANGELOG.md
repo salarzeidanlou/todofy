@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.14.0 — 2026-10-14
+
+### Added
+
+- Custom board columns with names, preset/custom colors, drag and keyboard ordering, and optional WIP limits. Counts include filtered-out active tasks; full columns warn while allowing moves. Definitions are stored locally and included in Cloud Sync.
+- Column deletion with atomic task reassignment, protected To do/Done roles, and retained replacement metadata for offline devices.
+
+### Fixed
+
+- Removed the shadows behind the floating quick-capture and notification cards.
+- Keyboard shortcuts now respect focused controls and open dialogs, preventing accidental task completion and duplicate submissions.
+- Task titles and notes keep unsaved edits through sync updates and failed saves, and newer typing is preserved while a save is in progress.
+- Completed tasks sort with pinned items first, then newest completion. Keyboard navigation follows the visible page, and changing pages or filters clears stale selection.
+- Reopening a card assigns its stage and position in one transaction. Default-column ordering now treats unplaced and explicit To do cards as one group. Canceling a card drag leaves it in place.
+
 ## v1.13.1 — 2026-09-28
 
 ### Fixed

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { columnOf, DONE_COLUMN, nudgeColumn, stageOf, STAGES } from "./board";
+import { boardColumns, DEFAULT_COLUMNS, columnOf, DONE_COLUMN, nudgeColumn, stageOf, STAGES } from "./board";
 import type { Task } from "../types";
 
 function task(overrides: Partial<Task> = {}): Task {
@@ -80,4 +80,36 @@ test("the first card into an empty column starts the order", () => {
     column: "doing",
     boardIndex: 0,
   });
+});
+
+test("custom columns use saved order while unplaced tasks still belong to To do", () => {
+  const definitions = [
+    ...DEFAULT_COLUMNS.map((c) => ({ ...c, orderIndex: c.id === "todo" ? 5 : c.orderIndex })),
+    { ...DEFAULT_COLUMNS[0], id: "review", name: "Review", orderIndex: -1, color: "#f26cc9" },
+  ];
+  expect(boardColumns([task()], definitions).map((c) => c.id)).toEqual(["review", "doing", "blocked", "todo", "done"]);
+  expect(stageOf(task(), definitions)).toBe("todo");
+  expect(nudgeColumn(task(), [task()], -1, definitions)?.column).toBe("blocked");
+});
+
+test("deleted column replacement chains and unknown stages keep tasks visible", () => {
+  const definitions = DEFAULT_COLUMNS.map((c) => ({ ...c,
+    deletedAt: c.id === "blocked" || c.id === "doing" ? "2026-01-01T00:00:00Z" : null,
+    replacementId: c.id === "blocked" ? "doing" : c.id === "doing" ? "todo" : null,
+  }));
+  expect(stageOf(task({ stage: "blocked" }), definitions)).toBe("todo");
+  expect(boardColumns([task({ stage: "missing" })], definitions).find((c) => c.id === "todo")?.tasks).toHaveLength(1);
+  definitions[0].replacementId = "blocked";
+  definitions[0].deletedAt = "2026-01-01T00:00:00Z";
+  expect(stageOf(task({ stage: "blocked" }), definitions)).toBe("todo");
+});
+
+test("WIP uses all active tasks even when only one card is visible", () => {
+  const definitions = DEFAULT_COLUMNS.map((c) => ({ ...c, wipLimit: c.id === "doing" ? 2 : null }));
+  const tasks = [task({ id: "visible", stage: "doing" }), task({ id: "hidden", stage: "doing" }), task({ id: "later", stage: "doing" }), task({ id: "finished", stage: "doing", status: "done" })];
+  const column = boardColumns([tasks[0]], definitions, tasks).find((c) => c.id === "doing")!;
+  expect(column.tasks).toHaveLength(1);
+  expect(column.activeCount).toBe(3);
+  expect(column.wipState).toBe("over");
+  expect(boardColumns(tasks.slice(0, 2), definitions).find((c) => c.id === "doing")?.wipState).toBe("full");
 });

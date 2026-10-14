@@ -1,7 +1,11 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect } from "preact/hooks";
 import { lazy, Suspense } from "preact/compat";
 import { applySearchAndFilters, tasksForView, useStore } from "../store";
-import { sectionsForView } from "../lib/grouping";
+import {
+  completedTasksPage,
+  COMPLETED_PAGE_SIZE,
+  sectionsForView,
+} from "../lib/grouping";
 import { completionStats } from "../lib/streak";
 import type { Task, ViewId } from "../types";
 import { QuickAdd } from "./QuickAdd";
@@ -14,8 +18,6 @@ import { BoardView } from "./BoardView";
 import { SearchBar } from "./SearchBar";
 import { TaskDetail } from "./TaskDetail";
 import { ChevronLeftIcon, ChevronRightIcon, InboxIcon } from "./Icons";
-
-const COMPLETED_PAGE_SIZE = 15;
 
 const SettingsView = lazy(() =>
   import("./SettingsView").then(({ SettingsView }) => ({ default: SettingsView })),
@@ -101,20 +103,34 @@ export function TaskList() {
     view,
     loading,
     selectedId,
+    completedPage,
+    setCompletedPage,
     searchQuery,
     filterLabelIds,
     filterPriorities,
     clearFilters,
     rescheduleOverdue,
-    select,
     loadError,
     load,
   } = useStore();
-  const [completedPage, setCompletedPage] = useState(1);
+  const inView = applySearchAndFilters(
+    tasksForView(tasks, view),
+    searchQuery,
+    filterLabelIds,
+    filterPriorities,
+  );
+  const completed = completedTasksPage(
+    view.kind === "completed" ? inView : [],
+    completedPage,
+  );
 
   useEffect(() => {
-    setCompletedPage(1);
-  }, [view.kind, searchQuery, filterLabelIds.join(","), filterPriorities.join(",")]);
+    // Deleting/reopening tasks can remove the last page. Persist the clamp so
+    // adding tasks later doesn't unexpectedly jump back to that old page.
+    if (view.kind === "completed" && completedPage !== completed.page) {
+      setCompletedPage(completed.page);
+    }
+  }, [view.kind, completedPage, completed.page, setCompletedPage]);
 
   if (view.kind === "labels") return <LabelsView />;
   if (view.kind === "focus") return <FocusView />;
@@ -146,15 +162,11 @@ export function TaskList() {
     (view.kind === "today" || view.kind === "completed") &&
     (stats.doneToday > 0 || stats.streak > 1);
 
-  const inView = applySearchAndFilters(
-    tasksForView(tasks, view),
-    searchQuery,
-    filterLabelIds,
-    filterPriorities,
-  );
   const active = inView.filter((task) => task.status === "active");
   const done = inView.filter((task) => task.status === "done");
-  const selected = inView.find((task) => task.id === selectedId);
+  const selected = (isCompletedView ? completed.tasks : inView).find(
+    (task) => task.id === selectedId,
+  );
   const selectedActive = active.find((task) => task.id === selectedId);
   // Daily views always surface the next active task. Pinboard and Completed
   // stay compact until the user explicitly chooses a task to inspect.
@@ -167,27 +179,18 @@ export function TaskList() {
     searchQuery.trim() !== "" ||
     filterLabelIds.length > 0 ||
     filterPriorities.length > 0;
-  const orderedCompleted = isCompletedView
-    ? sectionsForView(inView, view).flatMap((section) => section.tasks)
-    : [];
-  const completedPageCount = Math.max(
-    1,
-    Math.ceil(orderedCompleted.length / COMPLETED_PAGE_SIZE),
-  );
-  const currentCompletedPage = Math.min(completedPage, completedPageCount);
-  const completedPageStart = (currentCompletedPage - 1) * COMPLETED_PAGE_SIZE;
-  const visibleCompleted = orderedCompleted.slice(
-    completedPageStart,
-    completedPageStart + COMPLETED_PAGE_SIZE,
-  );
+  const {
+    page: currentCompletedPage,
+    pageCount: completedPageCount,
+    start: completedPageStart,
+  } = completed;
   const sections = (isCompletedView
-    ? [{ key: "all", title: null, tasks: visibleCompleted }]
+    ? [{ key: "all", title: null, tasks: completed.tasks }]
     : sectionsForView(active, view)
   ).filter((section) => section.tasks.length > 0);
 
   const changeCompletedPage = (page: number) => {
     setCompletedPage(page);
-    select(null);
     document.querySelector(".task-page-scroll")?.scrollTo({ top: 0, behavior: "smooth" });
   };
 

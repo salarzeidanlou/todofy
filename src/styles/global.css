@@ -2848,7 +2848,7 @@ body {
   border: 1px solid var(--color-border-strong);
   border-radius: 14px;
   background: color-mix(in srgb, var(--color-elevated) 92%, var(--color-bg));
-  box-shadow: 0 22px 55px rgb(0 0 0 / 0.55);
+  box-shadow: none;
 }
 
 .quick-capture-header {
@@ -2959,7 +2959,7 @@ body {
   border: 1px solid var(--color-border-strong);
   border-radius: 13px;
   background: color-mix(in srgb, var(--color-elevated) 92%, var(--color-bg));
-  box-shadow: 0 20px 42px rgb(0 0 0 / 0.5);
+  box-shadow: none;
 }
 
 .notification-accent {
@@ -4336,3 +4336,60 @@ button.voice-capture-action:hover:not(:disabled) {
     flex-basis: 38px;
   }
 }
+
+/* Configurable board columns: accents never replace task priority colors. */
+.board-column-head { border-top: 3px solid var(--column-color, var(--color-accent)); }
+.board-column-count.wip-full { color: var(--color-prio-2); background: color-mix(in srgb, var(--color-prio-2) 14%, transparent); }
+.board-column-count.wip-over { color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 14%, transparent); }
+.board-manage-button { display: inline-flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-muted); font-size: 12px; white-space: nowrap; }
+.board-manage-button:hover, .board-column-options:hover { color: var(--color-text); background: var(--color-surface-2); }
+.board-column-options { display: grid; place-items: center; padding: 5px; border-radius: 5px; color: var(--color-faint); }
+.board-notice { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 20px; font-size: 12px; color: var(--color-prio-2); background: var(--color-surface); }
+.column-dialog-backdrop { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 20px; background: #0008; backdrop-filter: blur(4px); }
+.column-dialog { width: min(680px, 100%); max-height: calc(100dvh - 40px); display: flex; flex-direction: column; border: 1px solid var(--color-border-strong); border-radius: 16px; background: var(--color-elevated); box-shadow: 0 24px 80px #0007; }
+.column-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px; border-bottom: 1px solid var(--color-border); }
+.column-dialog-header h2 { font-size: 18px; font-weight: 650; }
+.column-dialog-header p { margin-top: 5px; font-size: 12px; color: var(--color-muted); }
+.column-dialog-header > button { padding: 5px; color: var(--color-muted); }
+.column-dialog-scroll { overflow-y: auto; padding: 18px; }
+.column-manager-list { display: flex; flex-direction: column; gap: 8px; }
+.column-manager-row { display: flex; align-items: center; gap: 9px; border: 1px solid var(--color-border); border-radius: 9px; padding: 10px; }
+.column-manager-row.is-drop-target { border-color: var(--color-accent); background: var(--color-accent-soft); }
+.column-manager-row button { padding: 5px; font-size: 12px; color: var(--color-muted); border-radius: 4px; }
+.column-manager-row button:hover:enabled { color: var(--color-text); background: var(--color-surface-2); }
+.column-manager-row button:disabled, .column-dialog button:disabled { opacity: .4; cursor: default; }
+.column-drag-handle { cursor: grab; touch-action: none; }
+.column-color-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.column-manager-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.column-manager-copy strong { font-size: 13px; overflow-wrap: anywhere; }
+.column-manager-copy small { font-size: 11px; color: var(--color-muted); }
+.column-manager-row .column-delete, .column-error { color: var(--color-danger); }
+.column-editor, .column-delete-panel { margin-top: 16px; padding: 16px; border: 1px solid var(--color-border-strong); border-radius: 10px; display: flex; flex-direction: column; gap: 12px; background: var(--color-surface); }
+.column-editor h3, .column-delete-panel h3 { font-size: 14px; font-weight: 600; }
+.column-editor label, .column-delete-panel label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--color-muted); }
+.column-editor input, .column-delete-panel select { width: 100%; padding: 9px 10px; border: 1px solid var(--color-border); border-radius: 7px; background: var(--color-bg); color: var(--color-text); outline: none; }
+.column-editor input:focus, .column-delete-panel select:focus { border-color: var(--color-accent); }
+.column-editor small, .column-delete-panel p { font-size: 11px; line-height: 1.6; color: var(--color-muted); }
+.column-palette { display: flex; flex-wrap: wrap; gap: 9px; }
+.column-palette button { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; }
+.column-palette button[aria-pressed="true"] { outline: 2px solid var(--color-text); outline-offset: 2px; }
+.column-editor-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.column-editor-actions button, .column-add-button { padding: 8px 12px; border-radius: 7px; font-size: 12px; color: var(--color-muted); }
+.column-editor-actions .column-save-button { color: white; background: var(--color-accent); }
+.column-editor-actions .column-danger-button { color: white; background: var(--color-danger); }
+.column-add-button { display: inline-flex; gap: 6px; align-items: center; margin-top: 12px; border: 1px solid var(--color-border); }
+@media (max-width: 600px) {
+  .column-dialog-backdrop { padding: 10px; }
+  .column-dialog { max-height: calc(100dvh - 20px); }
+  .column-dialog-header, .column-dialog-scroll { padding: 12px; }
+  .column-manager-row { flex-wrap: wrap; }
+  .column-manager-copy { flex-basis: calc(100% - 70px); }
+}
+
+.board-page .app-page-header { flex-wrap: wrap; gap: 12px; }
+.board-toolbar { flex-wrap: wrap; max-width: 100%; }
+.board-column-head > div { flex: 1; min-width: 0; }
+.board-column-head h3 { overflow-wrap: anywhere; }
+.board-column-count, .board-column-options { flex-shrink: 0; }
+.column-editor .column-error { color: var(--color-danger); }
+.column-editor input[aria-invalid="true"] { border-color: var(--color-danger); }

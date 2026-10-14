@@ -1,3 +1,21 @@
+/** Column IDs stay fixed when a column is renamed or reordered. */
+export interface BoardColumnDefinition {
+  id: string;
+  name: string;
+  color: string;
+  orderIndex: number;
+  wipLimit: number | null;
+  updatedAt: string;
+  deletedAt: string | null;
+  replacementId: string | null;
+}
+
+export interface BoardColumnInput {
+  name: string;
+  color: string;
+  wipLimit: number | null;
+}
+
 export interface Label {
   id: string; // UUID
   name: string;

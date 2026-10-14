@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   ActiveTimer,
+  BoardColumnDefinition,
+  BoardColumnInput,
   Event,
   EventPatch,
   JournalEntry,
@@ -16,6 +18,11 @@ import type {
 } from "../types";
 
 export const api = {
+  listBoardColumns: () => invoke<BoardColumnDefinition[]>("list_board_columns"),
+  createBoardColumn: (input: BoardColumnInput) => invoke<BoardColumnDefinition[]>("create_board_column", { input }),
+  updateBoardColumn: (id: string, input: BoardColumnInput) => invoke<BoardColumnDefinition[]>("update_board_column", { id, input }),
+  reorderBoardColumns: (ids: string[]) => invoke<BoardColumnDefinition[]>("reorder_board_columns", { ids }),
+  deleteBoardColumn: (id: string, replacementId: string) => invoke<BoardColumnDefinition[]>("delete_board_column", { id, replacementId }),
   listTasks: () => invoke<Task[]>("list_tasks"),
   createTask: (task: NewTask) => invoke<Task>("create_task", { task }),
   updateTask: (patch: TaskPatch) => invoke<Task>("update_task", { patch }),

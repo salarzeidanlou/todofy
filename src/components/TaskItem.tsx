@@ -81,9 +81,10 @@ export function TaskItem({ task, drag }: { task: Task; drag?: DragProps }) {
       aria-pressed={selected}
       onClick={() => select(task.id)}
       onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          select(task.id);
+          if (!event.repeat) select(task.id);
         }
       }}
       class={`task-row ${selected ? "is-selected" : ""} ${done ? "is-done" : ""} ${drag?.dragging ? "is-dragging" : ""} ${tracking !== "off" ? "is-tracked" : ""}`}

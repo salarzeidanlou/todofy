@@ -171,7 +171,7 @@ export function useBoardDrag(
       const detach = () => {
         document.removeEventListener("pointermove", onMove);
         document.removeEventListener("pointerup", onUp);
-        document.removeEventListener("pointercancel", onUp);
+        document.removeEventListener("pointercancel", onCancel);
         detachRef.current = null;
       };
 
@@ -199,12 +199,22 @@ export function useBoardDrag(
         commit();
       };
 
+      const onCancel = () => {
+        detach();
+        dragIdRef.current = null;
+        overRef.current = null;
+        draggingRef.current = false;
+        stopAutoScroll();
+        setDragId(null);
+        setOver(null);
+      };
+
       detachRef.current = detach;
       document.addEventListener("pointermove", onMove);
       document.addEventListener("pointerup", onUp);
       // A cancelled pointer never fires pointerup, which would leave the
       // auto-scroll loop spinning against a detached board.
-      document.addEventListener("pointercancel", onUp);
+      document.addEventListener("pointercancel", onCancel);
     };
 
   // Leaving the board mid-drag would otherwise strand the scroll loop and

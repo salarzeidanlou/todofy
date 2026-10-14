@@ -77,9 +77,11 @@ export function sectionsForView(tasks: Task[], view: ViewId): Section[] {
     // Most recently completed first, with pinned ones still on top.
     const sorted = [...tasks].sort(
       (a, b) =>
-        new Date(b.completedAt ?? 0).getTime() - new Date(a.completedAt ?? 0).getTime(),
+        Number(b.pinned) - Number(a.pinned) ||
+        new Date(b.completedAt ?? 0).getTime() - new Date(a.completedAt ?? 0).getTime() ||
+        a.orderIndex - b.orderIndex,
     );
-    return [{ key: "all", title: null, tasks: pinnedFirst(sorted) }];
+    return [{ key: "all", title: null, tasks: sorted }];
   }
 
   if (view.kind === "date") {
@@ -88,4 +90,20 @@ export function sectionsForView(tasks: Task[], view: ViewId): Section[] {
 
   // Inbox / label / pinned: no grouping.
   return [{ key: "all", title: null, tasks: pinnedFirst(tasks) }];
+}
+
+export const COMPLETED_PAGE_SIZE = 15;
+
+/** Shared by the rendered list and keyboard navigation after filtering. */
+export function completedTasksPage(tasks: Task[], requestedPage: number) {
+  const ordered = sectionsForView(tasks, { kind: "completed" })[0].tasks;
+  const pageCount = Math.max(1, Math.ceil(ordered.length / COMPLETED_PAGE_SIZE));
+  const page = Math.max(1, Math.min(pageCount, Math.floor(requestedPage) || 1));
+  const start = (page - 1) * COMPLETED_PAGE_SIZE;
+  return {
+    page,
+    pageCount,
+    start,
+    tasks: ordered.slice(start, start + COMPLETED_PAGE_SIZE),
+  };
 }

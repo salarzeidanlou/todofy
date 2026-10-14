@@ -1,4 +1,5 @@
 mod auth_oauth;
+mod board;
 mod calendar;
 mod commands;
 mod db;
@@ -148,6 +149,11 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            board::list_board_columns,
+            board::create_board_column,
+            board::update_board_column,
+            board::reorder_board_columns,
+            board::delete_board_column,
             commands::list_tasks,
             commands::create_task,
             commands::update_task,

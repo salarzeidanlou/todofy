@@ -155,15 +155,27 @@ fn list_order(conn: &Connection) -> rusqlite::Result<Vec<(String, f64)>> {
 /// rather than the column it renders in: each slug is its own independent run
 /// of `board_index` values, which is what a renumber has to keep consistent.
 fn board_order(conn: &Connection, stage: Option<&str>) -> rusqlite::Result<Vec<(String, f64)>> {
+    let columns = crate::board::list(conn)?;
+    let target = crate::board::resolve_stage(stage, &columns);
     let mut stmt = conn.prepare(
-        "SELECT id, board_index FROM tasks
-         WHERE deleted_at IS NULL AND stage IS ?1
-         ORDER BY board_index ASC, created_at ASC",
+        "SELECT id, stage, board_index FROM tasks WHERE deleted_at IS NULL AND status != 'done'
+         ORDER BY board_index, created_at, id",
     )?;
-    let rows = stmt
-        .query_map(params![stage], |r| Ok((r.get(0)?, r.get(1)?)))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    Ok(rows)
+    let rows = stmt.query_map([], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, Option<String>>(1)?,
+            r.get::<_, f64>(2)?,
+        ))
+    })?;
+    let mut result = Vec::new();
+    for row in rows {
+        let (id, stored, index) = row?;
+        if crate::board::resolve_stage(stored.as_deref(), &columns) == target {
+            result.push((id, index));
+        }
+    }
+    Ok(result)
 }
 
 fn set_labels(conn: &Connection, task_id: &str, label_ids: &[String]) -> rusqlite::Result<()> {
@@ -418,10 +430,25 @@ fn move_task_to_stage_inner(
     stage: Option<&str>,
     board_index: f64,
 ) -> rusqlite::Result<Vec<Task>> {
+    if !board_index.is_finite() {
+        return Err(rusqlite::Error::InvalidParameterName(
+            "Invalid board position".into(),
+        ));
+    }
+    let columns = crate::board::list(conn)?;
+    let target = stage.unwrap_or(crate::board::TODO);
+    if !columns
+        .iter()
+        .any(|c| c.id == target && c.id != crate::board::DONE && c.deleted_at.is_none())
+    {
+        return Err(rusqlite::Error::InvalidParameterName(
+            "This column no longer exists".into(),
+        ));
+    }
     let now = now_iso();
     let tx = conn.transaction()?;
     tx.execute(
-        "UPDATE tasks SET stage = ?1, board_index = ?2, updated_at = ?3 WHERE id = ?4",
+        "UPDATE tasks SET stage = ?1, board_index = ?2, updated_at = ?3, status = 'active', completed_at = NULL WHERE id = ?4 AND deleted_at IS NULL",
         params![stage, board_index, now, id],
     )?;
     // Read the column back after the write, so the task is already in the group
@@ -884,6 +911,39 @@ mod command_tests {
         .unwrap()
         .collect::<rusqlite::Result<_>>()
         .unwrap()
+    }
+
+    #[test]
+    fn default_column_renumbering_combines_null_todo_and_unknown_stages() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        seed_tasks(&conn, &["unplaced"], None);
+        seed_tasks(&conn, &["explicit"], Some("todo"));
+        seed_tasks(&conn, &["orphan"], Some("missing"));
+        let moved = move_task_to_stage_inner(&mut conn, "unplaced", Some("todo"), 0.0).unwrap();
+        assert_eq!(moved.len(), 3);
+        let positions = indexes(&conn, "board_index");
+        assert_eq!(
+            positions.iter().map(|(_, n)| *n).collect::<Vec<_>>(),
+            vec![0.0, 1.0, 2.0]
+        );
+    }
+
+    #[test]
+    fn moving_from_done_reopens_and_positions_the_task_atomically() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        seed_tasks(&conn, &["finished"], Some("blocked"));
+        conn.execute(
+            "UPDATE tasks SET status='done', completed_at='2026-01-01T00:00:00Z'",
+            [],
+        )
+        .unwrap();
+        let moved = move_task_to_stage_inner(&mut conn, "finished", Some("doing"), 5.0).unwrap();
+        assert_eq!(moved[0].status, "active");
+        assert_eq!(moved[0].completed_at, None);
+        assert_eq!(moved[0].stage.as_deref(), Some("doing"));
+        assert!(move_task_to_stage_inner(&mut conn, "finished", Some("done"), 0.0).is_err());
     }
 
     /// The threshold has to hold at the magnitude these columns are actually
