@@ -10,6 +10,7 @@
 ### Fixed
 
 - Removed the shadows behind the floating quick-capture and notification cards.
+- Linux AppImage validation now checks permissions stored in SquashFS, avoiding false failures from private directories created by runtime extraction while still rejecting inaccessible packaged files.
 - Keyboard shortcuts now respect focused controls and open dialogs, preventing accidental task completion and duplicate submissions.
 - Task titles and notes keep unsaved edits through sync updates and failed saves, and newer typing is preserved while a save is in progress.
 - Completed tasks sort with pinned items first, then newest completion. Keyboard navigation follows the visible page, and changing pages or filters clears stale selection.

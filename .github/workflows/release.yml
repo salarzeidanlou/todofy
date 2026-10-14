@@ -249,7 +249,7 @@ jobs:
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev build-essential curl wget file \
             libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev \
-            libasound2-dev
+            libasound2-dev squashfs-tools
 
       - uses: oven-sh/setup-bun@v2
 
@@ -310,11 +310,11 @@ jobs:
           # three parallel jobs each merging their own copy would race.
           includeUpdaterJson: false
 
-      # The seed above is a workaround for a bundler bug, so assert the result
-      # rather than trust it: anything an AppImage keeps to its owner is broken
-      # for sandboxed users. The asset is already on the release by now, but the
-      # release is a draft and `publish` needs this job, so failing here keeps it
-      # from reaching anyone.
+      # Check the permissions stored in SquashFS. Newer AppImage runtimes
+      # create --appimage-extract directories as 0700 without restoring their
+      # archived modes, so inspecting that output falsely rejects valid images.
+      # unsquashfs restores the stored modes, including genuinely restricted
+      # directories. The uploaded release stays a draft until this check passes.
       - name: Reject owner-only files inside the AppImage
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -322,18 +322,29 @@ jobs:
           APPIMAGE="$(ls -1 src-tauri/target/release/bundle/appimage/*.AppImage | head -1)"
           APPIMAGE="$(readlink -f "$APPIMAGE")"
           chmod +x "$APPIMAGE"
+          OFFSET="$("$APPIMAGE" --appimage-offset)"
+          if [[ ! "$OFFSET" =~ ^[0-9]+$ ]]; then
+            echo "::error::Invalid SquashFS offset in $(basename "$APPIMAGE")"
+            exit 1
+          fi
           WORKDIR="$(mktemp -d)"
+          trap 'rm -rf "$WORKDIR"' EXIT
+          unsquashfs -no-progress -o "$OFFSET" \
+            -d "$WORKDIR/squashfs-root" "$APPIMAGE" >/dev/null
           cd "$WORKDIR"
-          "$APPIMAGE" --appimage-extract >/dev/null
-          # Flag anything unreadable by other, or executable by its owner alone.
+          # Require other-user read access, directory traversal, and execution
+          # for any executable file. Data files do not need an executable bit.
           OWNER_ONLY="$(find squashfs-root \( -type f -o -type d \) \
-            \( ! -perm -004 -o \( -perm -100 -a ! -perm -001 \) \) -printf '%M %p\n')"
+            \( ! -perm -004 \
+              -o \( -type d ! -perm -001 \) \
+              -o \( -type f -perm /111 ! -perm -001 \) \) \
+            -printf '%M %p\n')"
           if [ -n "$OWNER_ONLY" ]; then
             echo "::error::$(basename "$APPIMAGE") holds files no other user can read or run:"
             printf '%s\n' "$OWNER_ONLY"
             exit 1
           fi
-          echo "Every file in $(basename "$APPIMAGE") is readable and runnable by any user."
+          echo "All files in $(basename "$APPIMAGE") are readable; directories and executables are accessible to any user."
 
   voice-engine:
     needs: [check, validate, release]
