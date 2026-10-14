@@ -15,6 +15,10 @@
 - Completed tasks sort with pinned items first, then newest completion. Keyboard navigation follows the visible page, and changing pages or filters clears stale selection.
 - Reopening a card assigns its stage and position in one transaction. Default-column ordering now treats unplaced and explicit To do cards as one group. Canceling a card drag leaves it in place.
 
+### Security
+
+- Updated DOMPurify to 3.4.17, including fixes for GHSA-p98j-92pf-mc4p and GHSA-6688-9rhm-gjv2.
+
 ## v1.13.1 — 2026-09-28
 
 ### Fixed

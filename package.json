@@ -21,7 +21,7 @@
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "^2.11.0",
     "chrono-node": "^2.10.1",
-    "dompurify": "^3.4.14",
+    "dompurify": "^3.4.17",
     "marked": "^18.0.11",
     "preact": "^10.25.1",
     "zustand": "^5.0.14"
