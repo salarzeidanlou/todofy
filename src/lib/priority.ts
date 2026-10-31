@@ -128,6 +128,17 @@ export function isCustomized(profile: PriorityProfile): boolean {
   );
 }
 
+/** Does this priority's reminder behave differently from the global setting? */
+export function hasOverrides(profile: PriorityProfile): boolean {
+  return (
+    profile.sound !== null ||
+    profile.volume !== null ||
+    profile.ramp !== null ||
+    profile.notificationStyle !== null ||
+    profile.repeatMinutes !== null
+  );
+}
+
 /** How long a renamed priority may be before a task row truncates it. */
 const TAG_LIMIT = 14;
 

@@ -2949,12 +2949,19 @@ body {
   border-radius: 13px;
   background: color-mix(in srgb, var(--color-elevated) 92%, var(--color-bg));
   box-shadow: none;
+
+  /* A reminder sets these inline from its priority's color; everything else
+     (an update notice, the Settings test) keeps todofy's own accent. The soft
+     tone is a theme color rather than a tint of the accent, so it needs its
+     own variable instead of being mixed from the one above. */
+  --notification-accent: var(--color-accent);
+  --notification-accent-soft: var(--color-accent-soft);
 }
 
 .notification-accent {
   width: 3px;
   flex: 0 0 3px;
-  background: var(--color-accent);
+  background: var(--notification-accent);
 }
 
 .notification-content {
@@ -2972,10 +2979,11 @@ body {
   height: 38px;
   flex: 0 0 38px;
   place-items: center;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 28%, var(--color-border));
+  border: 1px solid
+    color-mix(in srgb, var(--notification-accent) 28%, var(--color-border));
   border-radius: 10px;
-  background: var(--color-accent-soft);
-  color: var(--color-accent);
+  background: var(--notification-accent-soft);
+  color: var(--notification-accent);
 }
 
 .notification-copy {
@@ -2984,7 +2992,7 @@ body {
 }
 
 .notification-eyebrow {
-  color: var(--color-accent);
+  color: var(--notification-accent);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -3073,7 +3081,7 @@ body {
   bottom: 0;
   left: 3px;
   height: 2px;
-  background: var(--color-accent);
+  background: var(--notification-accent);
 }
 
 /* Narrowest width that still fits the brand rail, every labelled item and its

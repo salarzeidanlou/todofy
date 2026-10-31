@@ -8,6 +8,8 @@ interface NotifyPayload {
   kind: "reminder" | "update";
   title: string;
   body: string;
+  /** A reminder's priority color; null leaves the card in todofy's accent. */
+  accent: string | null;
   task_id: string | null;
 }
 
@@ -124,6 +126,16 @@ export function NotificationPopup() {
         onMouseLeave={startTimer}
         onClick={open}
         class="notification-card group animate-slide-left"
+        style={
+          note.accent
+            ? {
+                "--notification-accent": note.accent,
+                // The theme's soft tone belongs to todofy's accent, so a
+                // priority color needs its own tint to sit the icon on.
+                "--notification-accent-soft": `color-mix(in srgb, ${note.accent} 16%, transparent)`,
+              }
+            : undefined
+        }
       >
         <div class="notification-accent" />
         <div class="notification-content">

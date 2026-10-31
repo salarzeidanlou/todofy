@@ -59,6 +59,9 @@ pub struct PopupPayload {
     kind: PopupKind,
     title: String,
     body: String,
+    /// The card's stripe and icon color — a reminder's priority color, or
+    /// `None` to leave the card in todofy's own accent.
+    accent: Option<String>,
     /// Task to open when the user clicks the card, if any.
     task_id: Option<String>,
 }
@@ -70,6 +73,7 @@ pub fn show_kind(
     kind: PopupKind,
     title: &str,
     body: &str,
+    accent: Option<String>,
     task_id: Option<String>,
 ) {
     let Some(win) = app.get_webview_window(POPUP_LABEL) else {
@@ -93,6 +97,7 @@ pub fn show_kind(
         kind,
         title: title.to_owned(),
         body: body.to_owned(),
+        accent,
         task_id,
     };
 
@@ -229,6 +234,7 @@ mod tests {
             kind: PopupKind::Update,
             title: "todofy 1.12.0 is available".into(),
             body: "Click to download and install it.".into(),
+            accent: None,
             task_id: None,
         };
         let json = serde_json::to_value(&payload).unwrap();
@@ -238,6 +244,10 @@ mod tests {
         assert_eq!(json["title"], "todofy 1.12.0 is available");
         assert_eq!(json["body"], "Click to download and install it.");
         assert!(json["task_id"].is_null());
+        assert!(
+            json["accent"].is_null(),
+            "an update notice keeps todofy's own accent"
+        );
     }
 
     #[test]
@@ -247,11 +257,13 @@ mod tests {
             kind: PopupKind::Reminder,
             title: "Call the bank".into(),
             body: "Due now".into(),
+            accent: Some("#f2555a".into()),
             task_id: Some("abc".into()),
         };
         let json = serde_json::to_value(&payload).unwrap();
 
         assert_eq!(json["kind"], "reminder");
         assert_eq!(json["task_id"], "abc");
+        assert_eq!(json["accent"], "#f2555a");
     }
 }

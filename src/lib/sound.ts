@@ -60,6 +60,58 @@ export function parseSoundSettings(stored: {
   };
 }
 
+/**
+ * Per-priority custom sound bytes. The audio itself stays on this device:
+ * base64 in a synced row would push up to a megabyte on every profile edit,
+ * so only the *choice* of "custom" travels between devices.
+ */
+export function customKeysFor(priority: number): {
+  data: string;
+  name: string;
+} {
+  return {
+    data: `${SOUND_KEYS.data}_p${priority}`,
+    name: `${SOUND_KEYS.name}_p${priority}`,
+  };
+}
+
+/** Every key a priority's own sound occupies, for the account-switch paths. */
+export function allCustomKeys(): string[] {
+  return [1, 2, 3, 4].flatMap((priority) => {
+    const keys = customKeysFor(priority);
+    return [keys.data, keys.name];
+  });
+}
+
+/**
+ * Fold a priority's sound overrides over the global settings.
+ *
+ * A profile that chose a custom sound on another device arrives here with no
+ * bytes to play, since those never leave the device they were loaded on. That
+ * falls back to the global sound rather than to silence: a reminder that makes
+ * no noise is indistinguishable from one that never fired.
+ */
+export function resolveSoundSettings(
+  profile: {
+    sound: SoundId | null;
+    volume: number | null;
+    ramp: boolean | null;
+  } | null,
+  global: SoundSettings,
+  customData: string | null,
+): SoundSettings {
+  if (!profile) return global;
+  const wantsCustom = profile.sound === "custom";
+  const sound =
+    wantsCustom && !customData ? global.sound : (profile.sound ?? global.sound);
+  return {
+    sound,
+    volume: profile.volume ?? global.volume,
+    ramp: profile.ramp ?? global.ramp,
+    customData: sound === "custom" ? (customData ?? global.customData) : null,
+  };
+}
+
 /** How many repeats it takes to climb from `RAMP_FLOOR` to the set volume. */
 const RAMP_STEPS = 4;
 const RAMP_FLOOR = 0.25;

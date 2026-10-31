@@ -12,7 +12,7 @@
 //! one place (Settings → Notifications) rather than four.
 
 use crate::db::Db;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -238,6 +238,78 @@ pub fn reset_priority_profile(
     reset(&db.conn(), priority).map_err(|e| e.to_string())
 }
 
+/// Has the user named or recolored this priority? Mirrors `isCustomized` in
+/// `lib/priority.ts`, which decides whether a task row shows it at all.
+pub fn is_customized(profile: &PriorityProfile) -> bool {
+    DEFAULTS
+        .iter()
+        .find(|(value, _, _)| *value == profile.priority)
+        .is_none_or(|(_, name, color)| {
+            profile.name != *name || !profile.color.eq_ignore_ascii_case(color)
+        })
+}
+
+/// What a notification calls this priority. An untouched one says "Reminder"
+/// rather than "Priority 1", which tells the reader nothing they wanted.
+pub fn reminder_label(profile: Option<&PriorityProfile>) -> String {
+    match profile {
+        Some(p) if is_customized(p) => p.name.clone(),
+        _ => "Reminder".to_owned(),
+    }
+}
+
+/// The color a notification wears, or `None` to keep todofy's own accent for a
+/// priority that isn't visually distinct anywhere else.
+pub fn reminder_accent(profile: Option<&PriorityProfile>) -> String {
+    match profile {
+        Some(p) if is_customized(p) => p.color.clone(),
+        _ => String::new(),
+    }
+}
+
+/// How a given task's reminder should behave, with each profile override
+/// already folded over the global setting. The sound is resolved in the
+/// frontend, which is what actually plays it.
+#[derive(Debug, PartialEq)]
+pub struct Resolved {
+    /// `"custom"` for todofy's own corner popup, `"native"` for the OS.
+    pub style: String,
+    /// Minutes between repeats, or `None` to fire once.
+    pub repeat_minutes: Option<i64>,
+}
+
+/// Fold a priority's overrides over the global reminder settings. An unknown
+/// priority, or a profile row that somehow went missing, resolves to the
+/// globals — the same answer todofy gave before profiles existed.
+pub fn resolve(conn: &Connection, priority: i64) -> Resolved {
+    let global = Resolved {
+        style: crate::settings::notification_style(conn),
+        repeat_minutes: crate::settings::reminder_repeat_minutes(conn),
+    };
+    let row: Option<(Option<String>, Option<i64>)> = conn
+        .query_row(
+            "SELECT notification_style, repeat_minutes FROM priority_profiles WHERE priority = ?1",
+            [priority],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()
+        .ok()
+        .flatten();
+    let Some((style, repeat_minutes)) = row else {
+        return global;
+    };
+    Resolved {
+        style: style.unwrap_or(global.style),
+        // `Some(0)` is the user saying "this one fires once" — a real choice,
+        // not an absent override, so it must not fall through to the global.
+        repeat_minutes: match repeat_minutes {
+            Some(0) => None,
+            Some(minutes) => Some(minutes),
+            None => global.repeat_minutes,
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -379,6 +451,118 @@ mod tests {
         assert_eq!(first.ramp, None);
         assert_eq!(first.notification_style, None);
         assert_eq!(first.repeat_minutes, None);
+    }
+
+    /// "⏰ Priority 1 · todofy" tells the reader nothing they didn't know, so
+    /// an untouched priority keeps the old wording and todofy's own accent.
+    #[test]
+    fn a_notification_only_wears_a_priority_the_user_made_their_own() {
+        let c = setup();
+        assert_eq!(reminder_label(Some(&profile(&c, 1))), "Reminder");
+        assert_eq!(reminder_accent(Some(&profile(&c, 1))), "");
+        assert_eq!(reminder_label(None), "Reminder");
+
+        update(&c, 1, &input()).unwrap();
+        assert_eq!(reminder_label(Some(&profile(&c, 1))), "Urgent");
+        assert_eq!(reminder_accent(Some(&profile(&c, 1))), "#f2555a");
+
+        // A recolor alone is enough to count, the same as on a task row.
+        update(
+            &c,
+            2,
+            &ProfileInput {
+                name: "Priority 2".into(),
+                color: "#38bdf8".into(),
+                ..input()
+            },
+        )
+        .unwrap();
+        assert!(is_customized(&profile(&c, 2)));
+    }
+
+    #[test]
+    fn an_untouched_priority_resolves_to_the_global_settings() {
+        let c = setup();
+        crate::settings::write(&c, "notification_style", "native").unwrap();
+        crate::settings::write(&c, "reminder_repeat_minutes", "10").unwrap();
+        assert_eq!(
+            resolve(&c, 2),
+            Resolved {
+                style: "native".into(),
+                repeat_minutes: Some(10),
+            }
+        );
+        // And an unknown priority can only fall back to them.
+        assert_eq!(resolve(&c, 9).style, "native");
+    }
+
+    #[test]
+    fn an_override_wins_over_the_global_setting() {
+        let c = setup();
+        crate::settings::write(&c, "notification_style", "native").unwrap();
+        crate::settings::write(&c, "reminder_repeat_minutes", "10").unwrap();
+        update(&c, 1, &input()).unwrap();
+        assert_eq!(
+            resolve(&c, 1),
+            Resolved {
+                style: "native".into(),
+                repeat_minutes: Some(2),
+            }
+        );
+        update(
+            &c,
+            1,
+            &ProfileInput {
+                notification_style: Some("custom".into()),
+                ..input()
+            },
+        )
+        .unwrap();
+        assert_eq!(resolve(&c, 1).style, "custom");
+    }
+
+    /// Only some of a profile's fields being set must leave the rest on the
+    /// global — that is the whole point of them being nullable.
+    #[test]
+    fn overrides_are_folded_field_by_field() {
+        let c = setup();
+        crate::settings::write(&c, "notification_style", "native").unwrap();
+        crate::settings::write(&c, "reminder_repeat_minutes", "10").unwrap();
+        update(
+            &c,
+            3,
+            &ProfileInput {
+                notification_style: None,
+                repeat_minutes: Some(5),
+                ..input()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            resolve(&c, 3),
+            Resolved {
+                style: "native".into(),
+                repeat_minutes: Some(5),
+            }
+        );
+    }
+
+    /// "This one only tells me once" is a choice, and has to survive a global
+    /// setting that says to keep nagging.
+    #[test]
+    fn a_zero_repeat_override_means_once_rather_than_inherit() {
+        let c = setup();
+        crate::settings::write(&c, "reminder_repeat_minutes", "2").unwrap();
+        update(
+            &c,
+            4,
+            &ProfileInput {
+                repeat_minutes: Some(0),
+                ..input()
+            },
+        )
+        .unwrap();
+        assert_eq!(resolve(&c, 4).repeat_minutes, None);
     }
 
     /// The frontend reads these keys off the wire, so a rename here is a
