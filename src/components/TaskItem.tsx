@@ -19,15 +19,9 @@ import {
 } from "./Icons";
 import { repeatLabel } from "../lib/repeat";
 import { formatDuration, formatMinutes } from "../lib/duration";
+import { priorityTag, profileFor, showsPriority } from "../lib/priority";
 import { overEstimateBy, trackedElapsed, trackingState } from "../lib/tracking";
 import { useTick } from "../lib/useTick";
-
-const PRIORITY_COLOR: Record<number, string> = {
-  1: "var(--color-prio-1)",
-  2: "var(--color-prio-2)",
-  3: "var(--color-prio-3)",
-  4: "var(--color-prio-4)",
-};
 
 const DUE_TONE: Record<string, string> = {
   overdue: "is-overdue",
@@ -47,6 +41,7 @@ interface DragProps {
 export function TaskItem({ task, drag }: { task: Task; drag?: DragProps }) {
   const {
     labels,
+    priorityProfiles,
     toggleTask,
     removeTask,
     patchTask,
@@ -59,6 +54,7 @@ export function TaskItem({ task, drag }: { task: Task; drag?: DragProps }) {
     resumeTaskTimer,
     stopTaskTimer,
   } = useStore();
+  const priority = profileFor(task.priority, priorityProfiles);
   const done = task.status === "done";
   const selected = selectedId === task.id;
   const taskLabels = labels.filter((label) => task.labelIds.includes(label.id));
@@ -104,7 +100,7 @@ export function TaskItem({ task, drag }: { task: Task; drag?: DragProps }) {
       <button
         type="button"
         class="task-complete"
-        style={!done ? { borderColor: PRIORITY_COLOR[task.priority] } : undefined}
+        style={!done ? { borderColor: priority.color } : undefined}
         title={done ? "Mark active" : "Complete"}
         onClick={(event) => {
           event.stopPropagation();
@@ -125,9 +121,10 @@ export function TaskItem({ task, drag }: { task: Task; drag?: DragProps }) {
       </div>
 
       <div class="task-row-meta">
-        {task.priority < 4 && (
-          <span style={{ color: PRIORITY_COLOR[task.priority] }}>
-            <FlagIcon width={13} height={13} />P{task.priority}
+        {showsPriority(task.priority, priorityProfiles) && (
+          <span style={{ color: priority.color }} title={priority.name}>
+            <FlagIcon width={13} height={13} />
+            {priorityTag(task.priority, priorityProfiles)}
           </span>
         )}
         {due && <span class={DUE_TONE[due.tone]}>{due.label}</span>}

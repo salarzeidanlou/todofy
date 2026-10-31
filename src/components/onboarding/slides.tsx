@@ -10,6 +10,7 @@ import { billingConfigured, useBilling } from "../../lib/billing";
 import { formatDue, formatTime } from "../../lib/dates";
 import { parseQuickAdd } from "../../lib/nlp";
 import { useOnboarding } from "../../lib/onboarding";
+import { priorityColor, priorityTag } from "../../lib/priority";
 import { repeatLabel } from "../../lib/repeat";
 import {
   BellIcon,
@@ -237,15 +238,9 @@ function ThemePreview({ mode }: { mode: "dark" | "light" }) {
 
 const DEMO = "Call the bank tomorrow at 10am p1 every month";
 
-const PRIORITY_COLOR: Record<number, string> = {
-  1: "var(--color-prio-1)",
-  2: "var(--color-prio-2)",
-  3: "var(--color-prio-3)",
-  4: "var(--color-prio-4)",
-};
-
 export function CaptureSlide() {
   const labels = useStore((s) => s.labels);
+  const priorityProfiles = useStore((s) => s.priorityProfiles);
   const setDraftText = useOnboarding((s) => s.setDraftText);
   const inputRef = useRef<HTMLInputElement>(null);
   // Stepping back to this slide restores whatever was typed the first time.
@@ -328,9 +323,10 @@ export function CaptureSlide() {
           {parsed.priority !== null && (
             <ParsedChip
               key={`p${parsed.priority}`}
-              color={PRIORITY_COLOR[parsed.priority]}
+              color={priorityColor(parsed.priority, priorityProfiles)}
             >
-              <FlagIcon width={11} height={11} />P{parsed.priority}
+              <FlagIcon width={11} height={11} />
+              {priorityTag(parsed.priority, priorityProfiles)}
             </ParsedChip>
           )}
           {parsed.dueDate && (

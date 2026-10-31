@@ -1,16 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
+import { useStore } from "../store";
+import { priorityTag, PRIORITY_VALUES, profileFor } from "../lib/priority";
 import { FlagIcon } from "./Icons";
-
-export const PRIORITIES: {
-  value: 1 | 2 | 3 | 4;
-  label: string;
-  color: string;
-}[] = [
-  { value: 1, label: "Priority 1", color: "var(--color-prio-1)" },
-  { value: 2, label: "Priority 2", color: "var(--color-prio-2)" },
-  { value: 3, label: "Priority 3", color: "var(--color-prio-3)" },
-  { value: 4, label: "Priority 4", color: "var(--color-prio-4)" },
-];
 
 interface Props {
   value: number;
@@ -24,9 +15,10 @@ export function PriorityPicker({
   onChange,
   placement = "bottom",
 }: Props) {
+  const profiles = useStore((s) => s.priorityProfiles);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const current = PRIORITIES.find((p) => p.value === value) ?? PRIORITIES[3];
+  const current = profileFor(value, profiles);
 
   useEffect(() => {
     if (!open) return;
@@ -45,33 +37,40 @@ export function PriorityPicker({
         class="flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted transition-colors hover:bg-surface-2"
         title="Priority"
       >
-        <FlagIcon width={14} height={14} style={{ color: current.color }} />P
-        {current.value}
+        <FlagIcon width={14} height={14} style={{ color: current.color }} />
+        {priorityTag(current.priority, profiles)}
       </button>
 
       {open && (
         <div
           class={`absolute right-0 z-50 w-40 animate-fade-rise rounded-lg border border-border-strong bg-elevated p-1 shadow-xl shadow-black/40 ${placement === "top" ? "bottom-full mb-2" : "top-full mt-1"}`}
         >
-          {PRIORITIES.map((p) => (
-            <button
-              key={p.value}
-              type="button"
-              onClick={() => {
-                onChange(p.value);
-                setOpen(false);
-              }}
-              class={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-surface-2 ${
-                p.value === value ? "text-text" : "text-muted"
-              }`}
-            >
-              <FlagIcon width={14} height={14} style={{ color: p.color }} />
-              {p.label}
-              {p.value === value && (
-                <span class="ml-auto text-(--color-accent)">✓</span>
-              )}
-            </button>
-          ))}
+          {PRIORITY_VALUES.map((priority) => {
+            const profile = profileFor(priority, profiles);
+            return (
+              <button
+                key={priority}
+                type="button"
+                onClick={() => {
+                  onChange(priority);
+                  setOpen(false);
+                }}
+                class={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-surface-2 ${
+                  priority === current.priority ? "text-text" : "text-muted"
+                }`}
+              >
+                <FlagIcon
+                  width={14}
+                  height={14}
+                  style={{ color: profile.color }}
+                />
+                <span class="truncate">{profile.name}</span>
+                {priority === current.priority && (
+                  <span class="ml-auto text-(--color-accent)">✓</span>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

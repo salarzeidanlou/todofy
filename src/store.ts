@@ -17,6 +17,7 @@ import {
   readBoardScope,
   type ColumnId,
 } from "./lib/board";
+import { DEFAULT_PROFILES, type PriorityProfile } from "./lib/priority";
 import { applyTheme, initialTheme, type Theme } from "./lib/theme";
 import {
   setTimeFormat,
@@ -60,6 +61,8 @@ interface State {
   updateBoardColumn: (id: string, input: BoardColumnInput) => Promise<void>;
   reorderBoardColumns: (ids: string[]) => Promise<void>;
   deleteBoardColumn: (id: string, replacementId: string) => Promise<void>;
+  /** Per-priority names, colors and reminder overrides; see `lib/priority`. */
+  priorityProfiles: PriorityProfile[];
   tasks: Task[];
   labels: Label[];
   journal: JournalEntry[];
@@ -171,6 +174,7 @@ export const useStore = create<State>((set, get) => ({
     set({ boardDefinitions, boardNotice: null });
     set({ tasks: sortTasks(await api.listTasks()) });
   },
+  priorityProfiles: DEFAULT_PROFILES,
   tasks: [],
   labels: [],
   journal: [],

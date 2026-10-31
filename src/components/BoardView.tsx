@@ -17,6 +17,7 @@ import { formatDuration, formatMinutes } from "../lib/duration";
 import { overEstimateBy, trackedElapsed, trackingState } from "../lib/tracking";
 import { useTick } from "../lib/useTick";
 import { repeatLabel } from "../lib/repeat";
+import { priorityTag, profileFor, showsPriority } from "../lib/priority";
 import type { Task } from "../types";
 import { BoardColumnsDialog } from "./BoardColumnsDialog";
 import { SearchBar } from "./SearchBar";
@@ -32,13 +33,6 @@ import {
   SettingsIcon,
   TimerIcon,
 } from "./Icons";
-
-const PRIORITY_COLOR: Record<number, string> = {
-  1: "var(--color-prio-1)",
-  2: "var(--color-prio-2)",
-  3: "var(--color-prio-3)",
-  4: "var(--color-prio-4)",
-};
 
 const DUE_TONE: Record<string, string> = {
   overdue: "is-overdue",
@@ -279,7 +273,8 @@ function BoardCard({
   onPointerDown,
   onSelect,
 }: CardProps) {
-  const { labels, toggleTask, activeTimer } = useStore();
+  const { labels, priorityProfiles, toggleTask, activeTimer } = useStore();
+  const priority = profileFor(task.priority, priorityProfiles);
   const done = task.status === "done";
   const taskLabels = labels.filter((label) => task.labelIds.includes(label.id));
   const lateReminder = !done && isPast(task.remindAt);
@@ -312,15 +307,13 @@ function BoardCard({
       class={`board-card ${selected ? "is-selected" : ""} ${done ? "is-done" : ""} ${
         tracking !== "off" ? "is-tracked" : ""
       } ${task.pinned ? "is-pinned" : ""} ${dragging ? "is-dragging" : ""}`}
-      style={{ "--card-accent": PRIORITY_COLOR[task.priority] }}
+      style={{ "--card-accent": priority.color }}
     >
       <div class="board-card-head">
         <button
           type="button"
           class="task-complete"
-          style={
-            !done ? { borderColor: PRIORITY_COLOR[task.priority] } : undefined
-          }
+          style={!done ? { borderColor: priority.color } : undefined}
           title={done ? "Mark active" : "Complete"}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
@@ -334,9 +327,10 @@ function BoardCard({
       </div>
 
       <div class="board-card-meta">
-        {task.priority < 4 && (
-          <span style={{ color: PRIORITY_COLOR[task.priority] }}>
-            <FlagIcon width={12} height={12} />P{task.priority}
+        {showsPriority(task.priority, priorityProfiles) && (
+          <span style={{ color: priority.color }} title={priority.name}>
+            <FlagIcon width={12} height={12} />
+            {priorityTag(task.priority, priorityProfiles)}
           </span>
         )}
         {due && <span class={DUE_TONE[due.tone]}>{due.label}</span>}

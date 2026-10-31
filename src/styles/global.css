@@ -2342,20 +2342,9 @@ body {
   --entry-bg: color-mix(in srgb, var(--color-elevated) 88%, var(--color-bg));
 }
 
-.calendar-entry-pill.priority-1,
-.calendar-timed-entry.priority-1 {
-  --entry-color: var(--color-prio-1);
-}
-
-.calendar-entry-pill.priority-2,
-.calendar-timed-entry.priority-2 {
-  --entry-color: var(--color-prio-2);
-}
-
-.calendar-entry-pill.priority-3,
-.calendar-timed-entry.priority-3 {
-  --entry-color: var(--color-prio-3);
-}
+/* A task entry's `--entry-color` is set inline from its priority profile
+   (see `entryColor` in CalendarView); the rule above is the fallback for
+   events and for a priority with nothing to show. */
 
 .calendar-entry-pill.is-done,
 .calendar-timed-entry.is-done {

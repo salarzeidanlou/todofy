@@ -24,14 +24,13 @@ import { EstimatePicker } from "./EstimatePicker";
 import { formatDuration, formatMinutes } from "../lib/duration";
 import { repeatLabel } from "../lib/repeat";
 import { overEstimateBy, trackedElapsed, trackingState } from "../lib/tracking";
+import {
+  priorityTag,
+  PRIORITY_VALUES,
+  profileFor,
+} from "../lib/priority";
 import { useTick } from "../lib/useTick";
 
-const PRIORITIES: { value: 1 | 2 | 3 | 4; label: string; color: string }[] = [
-  { value: 1, label: "P1", color: "var(--color-prio-1)" },
-  { value: 2, label: "P2", color: "var(--color-prio-2)" },
-  { value: 3, label: "P3", color: "var(--color-prio-3)" },
-  { value: 4, label: "P4", color: "var(--color-prio-4)" },
-];
 
 /**
  * The task card. `compact` switches to a single-column layout for narrow
@@ -55,6 +54,7 @@ export function TaskDetail({
 function TaskDetailContent({ task, compact }: { task: Task; compact?: boolean }) {
   const {
     labels,
+    priorityProfiles,
     patchTask,
     removeTask,
     toggleTask,
@@ -67,6 +67,7 @@ function TaskDetailContent({ task, compact }: { task: Task; compact?: boolean })
     resumeTaskTimer,
     stopTaskTimer,
   } = useStore();
+  const priority = profileFor(task.priority, priorityProfiles);
   const title = useTextDraft(task.title);
   const notes = useTextDraft(task.notes ?? "");
   const [expanded, setExpanded] = useState(false);
@@ -136,14 +137,14 @@ function TaskDetailContent({ task, compact }: { task: Task; compact?: boolean })
     <section
       class={`next-up-card ${done ? "is-done" : ""} ${compact ? "is-compact" : ""}`}
     >
-      <div class="next-up-accent" style={{ background: PRIORITIES[task.priority - 1].color }} />
+      <div class="next-up-accent" style={{ background: priority.color }} />
       <div class="next-up-body">
         <div class="next-up-header">
           <button
             type="button"
             class="next-up-complete"
             onClick={() => toggleTask(task.id, !done)}
-            style={!done ? { borderColor: PRIORITIES[task.priority - 1].color } : undefined}
+            style={!done ? { borderColor: priority.color } : undefined}
             title={done ? "Mark active" : "Complete"}
           >
             {done && <CheckIcon width={14} height={14} stroke-width={3} />}
@@ -206,8 +207,9 @@ function TaskDetailContent({ task, compact }: { task: Task; compact?: boolean })
         </div>
 
         <div class="next-up-meta">
-          <span style={{ color: PRIORITIES[task.priority - 1].color }}>
-            <FlagIcon width={14} height={14} />P{task.priority}
+          <span style={{ color: priority.color }} title={priority.name}>
+            <FlagIcon width={14} height={14} />
+            {priorityTag(task.priority, priorityProfiles)}
           </span>
           {due && <span class={due.tone}><CalendarIcon width={14} height={14} />{due.label}</span>}
           {task.remindAt && (
@@ -316,17 +318,22 @@ function TaskDetailContent({ task, compact }: { task: Task; compact?: boolean })
               </DetailField>
               <DetailField icon={<FlagIcon width={16} height={16} />} label="Priority">
                 <div class="priority-inline">
-                  {PRIORITIES.map((priority) => (
-                    <button
-                      type="button"
-                      key={priority.value}
-                      onClick={() => patchTask({ id: task.id, priority: priority.value })}
-                      class={task.priority === priority.value ? "is-active" : ""}
-                      style={task.priority === priority.value ? { background: priority.color } : undefined}
-                    >
-                      {priority.label}
-                    </button>
-                  ))}
+                  {PRIORITY_VALUES.map((value) => {
+                    const option = profileFor(value, priorityProfiles);
+                    const active = task.priority === value;
+                    return (
+                      <button
+                        type="button"
+                        key={value}
+                        onClick={() => patchTask({ id: task.id, priority: value })}
+                        class={active ? "is-active" : ""}
+                        style={active ? { background: option.color } : undefined}
+                        title={option.name}
+                      >
+                        {priorityTag(value, priorityProfiles)}
+                      </button>
+                    );
+                  })}
                 </div>
               </DetailField>
             </div>

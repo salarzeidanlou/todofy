@@ -1,3 +1,4 @@
+import type { JSX } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { eventDate, useStore } from "../store";
 import {
@@ -9,6 +10,11 @@ import {
 } from "../lib/calendarLayout";
 import { formatTime, toLocalDate, today } from "../lib/dates";
 import { weekdayNames } from "../lib/locale";
+import {
+  priorityColor,
+  showsPriority,
+  type PriorityProfile,
+} from "../lib/priority";
 import type { Event, Task } from "../types";
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "./Icons";
 import { EventEditor } from "./EventEditor";
@@ -450,11 +456,13 @@ function CalendarPill({
   onOpenEvent: (event: Event) => void;
   onOpenTaskDay: (date: string) => void;
 }) {
+  const priorityProfiles = useStore((s) => s.priorityProfiles);
   const time = entry.startMinute === null ? null : minuteToTime(entry.startMinute);
   return (
     <button
       type="button"
       class={`calendar-entry-pill ${entryTone(entry)}`}
+      style={entryColor(entry, priorityProfiles)}
       title={`${time ? `${formatTime(time)} · ` : ""}${entry.title}`}
       onClick={(event) => {
         event.stopPropagation();
@@ -483,6 +491,7 @@ function TimedCalendarCard({
   onOpenEvent: (event: Event) => void;
   onOpenTaskDay: (date: string) => void;
 }) {
+  const priorityProfiles = useStore((s) => s.priorityProfiles);
   const width = 100 / entry.laneCount;
   const start = minuteToTime(entry.startMinute);
   const end = minuteToTime(entry.endMinute);
@@ -491,6 +500,7 @@ function TimedCalendarCard({
       type="button"
       class={`calendar-timed-entry ${entryTone(entry)}`}
       style={{
+        ...entryColor(entry, priorityProfiles),
         top: `${entry.startMinute * MINUTE_HEIGHT}px`,
         height: `${Math.max(28, (entry.endMinute - entry.startMinute) * MINUTE_HEIGHT)}px`,
         left: `calc(${entry.lane * width}% + 3px)`,
@@ -643,5 +653,20 @@ function timeZoneOffset(date: Date): string {
 
 function entryTone(entry: CalendarEntry): string {
   if (entry.source === "local") return "is-local";
-  return `is-task priority-${entry.priority ?? 4}${entry.done ? " is-done" : ""}`;
+  return `is-task${entry.done ? " is-done" : ""}`;
+}
+
+/**
+ * A task entry wears its priority's color. Left unset for events, and for a
+ * priority that isn't shown anywhere else (an untouched P4), so the CSS keeps
+ * drawing those in the muted tone.
+ */
+function entryColor(
+  entry: CalendarEntry,
+  profiles: PriorityProfile[],
+): JSX.CSSProperties | undefined {
+  if (entry.source === "local" || !showsPriority(entry.priority ?? 4, profiles)) {
+    return undefined;
+  }
+  return { "--entry-color": priorityColor(entry.priority ?? 4, profiles) };
 }
