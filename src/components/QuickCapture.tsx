@@ -4,7 +4,12 @@ import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { emit } from "@tauri-apps/api/event";
 import { api } from "../lib/api";
 import { parseQuickAdd } from "../lib/nlp";
-import { priorityColor, priorityTag } from "../lib/priority";
+import {
+  DEFAULT_PROFILES,
+  priorityColor,
+  priorityTag,
+  type PriorityProfile,
+} from "../lib/priority";
 import { repeatLabel } from "../lib/repeat";
 import { combineDateTime, formatDue, formatTime, today } from "../lib/dates";
 import type { Label, NewTask } from "../types";
@@ -21,6 +26,10 @@ import { insertTranscript } from "../lib/voice";
 export function QuickCapture() {
   const [title, setTitle] = useState("");
   const [labels, setLabels] = useState<Label[]>([]);
+  // This window has no store of its own, so the profiles behind the parsed
+  // chip are fetched the way labels are, falling back to the built-ins.
+  const [priorityProfiles, setPriorityProfiles] =
+    useState<PriorityProfile[]>(DEFAULT_PROFILES);
   const inputRef = useRef<HTMLInputElement>(null);
   const voicePanelRef = useRef<HTMLDivElement>(null);
   const shownAt = useRef(Date.now());
@@ -74,6 +83,10 @@ export function QuickCapture() {
       .listLabels()
       .then(setLabels)
       .catch(() => {});
+    api
+      .listPriorityProfiles()
+      .then(setPriorityProfiles)
+      .catch(() => {});
 
     const win = getCurrentWindow();
     focusInput();
@@ -86,6 +99,10 @@ export function QuickCapture() {
       api
         .listLabels()
         .then(setLabels)
+        .catch(() => {});
+      api
+        .listPriorityProfiles()
+        .then(setPriorityProfiles)
         .catch(() => {});
       focusInput();
     });
@@ -177,9 +194,9 @@ export function QuickCapture() {
         {hasChips ? (
           <div class="quick-capture-footer">
             {parsed.priority !== null && (
-              <Chip color={priorityColor(parsed.priority)}>
+              <Chip color={priorityColor(parsed.priority, priorityProfiles)}>
                 <FlagIcon width={11} height={11} />
-                {priorityTag(parsed.priority)}
+                {priorityTag(parsed.priority, priorityProfiles)}
               </Chip>
             )}
             {parsed.dueDate && (

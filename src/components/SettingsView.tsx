@@ -37,6 +37,7 @@ import { RELEASES_URL, useUpdater } from "../lib/updater";
 import type { TaskTimerMode } from "../types";
 import { AccountSection } from "./AccountSection";
 import { CalendarSection } from "./CalendarSection";
+import { PriorityProfilesSection } from "./PriorityProfilesSection";
 import { VoiceSettingsSection } from "./VoiceSettingsSection";
 import {
   BellIcon,
@@ -446,6 +447,8 @@ export function SettingsView() {
             </div>
           )}
         </Section>
+
+        <PriorityProfilesSection />
 
         {/* Quick capture */}
         <Section title="Quick capture">

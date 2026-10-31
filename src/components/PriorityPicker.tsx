@@ -16,6 +16,7 @@ export function PriorityPicker({
   placement = "bottom",
 }: Props) {
   const profiles = useStore((s) => s.priorityProfiles);
+  const setView = useStore((s) => s.setView);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const current = profileFor(value, profiles);
@@ -71,6 +72,16 @@ export function PriorityPicker({
               </button>
             );
           })}
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              setView({ kind: "settings" });
+            }}
+            class="mt-1 flex w-full items-center rounded-md border-t border-border px-2 py-1.5 text-xs text-faint transition-colors hover:bg-surface-2 hover:text-muted"
+          >
+            Rename or recolor…
+          </button>
         </div>
       )}
     </div>

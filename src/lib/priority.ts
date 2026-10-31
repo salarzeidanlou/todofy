@@ -33,6 +33,17 @@ export interface PriorityProfile {
   updatedAt: string;
 }
 
+/** What the editor sends back: everything but the number and the revision. */
+export type PriorityProfileInput = Omit<
+  PriorityProfile,
+  "priority" | "updatedAt"
+>;
+
+export function inputOf(profile: PriorityProfile): PriorityProfileInput {
+  const { priority: _priority, updatedAt: _updatedAt, ...input } = profile;
+  return input;
+}
+
 /**
  * Matching `--color-prio-1..4` in `styles/global.css`, which stay as the CSS
  * fallbacks for rules that can't read a profile (and as the generic red/amber
