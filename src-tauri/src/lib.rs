@@ -7,6 +7,7 @@ mod google_calendar;
 mod models;
 mod notify;
 mod popup;
+mod priority;
 mod quickwin;
 mod recur;
 mod scheduler;
@@ -154,6 +155,9 @@ pub fn run() {
             board::update_board_column,
             board::reorder_board_columns,
             board::delete_board_column,
+            priority::list_priority_profiles,
+            priority::update_priority_profile,
+            priority::reset_priority_profile,
             commands::list_tasks,
             commands::create_task,
             commands::update_task,

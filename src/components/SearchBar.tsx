@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { useStore } from "../store";
+import { PRIORITY_VALUES, profileFor } from "../lib/priority";
 import { CloseIcon, FlagIcon, SearchIcon } from "./Icons";
-import { PRIORITIES } from "./PriorityPicker";
 
 export function SearchBar() {
   const {
+    priorityProfiles,
     labels,
     searchQuery,
     filterLabelIds,
@@ -82,17 +83,20 @@ export function SearchBar() {
           <div>
             <p>Priority</p>
             <div class="filter-options">
-              {PRIORITIES.map((priority) => (
-                <button
-                  key={priority.value}
-                  type="button"
-                  onClick={() => toggleFilterPriority(priority.value)}
-                  class={filterPriorities.includes(priority.value) ? "is-active" : ""}
-                >
-                  <FlagIcon width={12} height={12} style={{ color: priority.color }} />
-                  {priority.label}
-                </button>
-              ))}
+              {PRIORITY_VALUES.map((priority) => {
+                const profile = profileFor(priority, priorityProfiles);
+                return (
+                  <button
+                    key={priority}
+                    type="button"
+                    onClick={() => toggleFilterPriority(priority)}
+                    class={filterPriorities.includes(priority) ? "is-active" : ""}
+                  >
+                    <FlagIcon width={12} height={12} style={{ color: profile.color }} />
+                    {profile.name}
+                  </button>
+                );
+              })}
             </div>
           </div>
           {labels.length > 0 && (

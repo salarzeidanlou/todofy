@@ -16,6 +16,23 @@ struct DueReminder {
     id: String,
     title: String,
     round: i64,
+    priority: i64,
+    /// The priority's name and color, so a notification can wear them.
+    #[serde(skip)]
+    label: String,
+    #[serde(skip)]
+    color: String,
+    /// Resolved from this task's priority profile over the global setting.
+    #[serde(skip)]
+    style: String,
+}
+
+/// What the main window needs in order to play the right sound: which round
+/// this is (for the volume ramp) and whose profile chose the sound.
+#[derive(Serialize, Clone)]
+struct ReminderSound {
+    round: i64,
+    priority: i64,
 }
 
 /// Spawn a background thread that periodically checks for tasks whose
@@ -30,25 +47,40 @@ pub fn spawn(app: AppHandle) {
 }
 
 fn tick(app: &AppHandle) -> Result<(), String> {
-    let (notifications_enabled, custom_popup) = {
+    let notifications_enabled = {
         let db = app.state::<Db>();
         let conn = db.conn();
-        (
-            crate::settings::desktop_notifications_enabled(&conn),
-            crate::settings::notification_style(&conn) != "native",
-        )
+        crate::settings::desktop_notifications_enabled(&conn)
     };
 
     let due = collect_due(app)?;
     for r in due {
+        // Each task's style comes from its own priority profile, so one
+        // reminder can take over the screen while another goes to the
+        // notification centre.
+        let custom_popup = r.style != "native";
         if notifications_enabled {
             // Fires even when the window is hidden in the tray, since this runs
             // on a background thread. Routes to the custom popup or the OS per
-            // the user's setting.
-            crate::notify::send(app, &r.title, "⏰ Reminder · todofy", Some(r.id.clone()));
+            // the resolved setting.
+            crate::notify::deliver_reminder(
+                app,
+                &r.style,
+                &r.title,
+                &format!("⏰ {} · todofy", r.label),
+                &r.color,
+                r.id.clone(),
+            );
             // Played by the main webview: unlike the popup window, it has
             // almost certainly had the user gesture audio playback requires.
-            let _ = app.emit_to("main", "reminder-sound", r.round);
+            let _ = app.emit_to(
+                "main",
+                "reminder-sound",
+                ReminderSound {
+                    round: r.round,
+                    priority: r.priority,
+                },
+            );
         }
         // The custom popup already is our in-app surface; only emit the toast
         // for the main window when we're using OS notifications, to avoid a
@@ -68,14 +100,14 @@ fn collect_due(app: &AppHandle) -> Result<Vec<DueReminder>, String> {
     let db = app.state::<Db>();
     let conn = db.conn();
     let now = Local::now();
-    let repeat_after = crate::settings::reminder_repeat_minutes(&conn);
 
     // A task can fire from an explicit reminder time (`remind_at`) or, failing
     // that, from a due date alone — treated as DEFAULT_REMINDER_HOUR on that day.
     // Repeats are limited to reminders the user hasn't answered yet.
     let mut stmt = conn
         .prepare(
-            "SELECT id, title, remind_at, due_date, notified, last_notified_at, created_at
+            "SELECT id, title, remind_at, due_date, notified, last_notified_at, created_at,
+                    priority
              FROM tasks
              WHERE status = 'active' AND deleted_at IS NULL
                AND (remind_at IS NOT NULL OR due_date IS NOT NULL)
@@ -93,14 +125,16 @@ fn collect_due(app: &AppHandle) -> Result<Vec<DueReminder>, String> {
                 r.get::<_, i64>(4)?,
                 r.get::<_, Option<String>>(5)?,
                 r.get::<_, Option<String>>(6)?,
+                r.get::<_, i64>(7)?,
             ))
         })
         .map_err(|e| e.to_string())?
         .collect::<rusqlite::Result<Vec<_>>>()
         .map_err(|e| e.to_string())?;
 
+    let profiles = crate::priority::list(&conn).map_err(|e| e.to_string())?;
     let mut due = Vec::new();
-    for (id, title, remind_at, due_date, notified, last_notified_at, created_at) in rows {
+    for (id, title, remind_at, due_date, notified, last_notified_at, created_at, priority) in rows {
         let Some(fires_at) = reminder_instant(
             remind_at.as_deref(),
             due_date.as_deref(),
@@ -111,16 +145,30 @@ fn collect_due(app: &AppHandle) -> Result<Vec<DueReminder>, String> {
         if fires_at > now {
             continue;
         }
-        if notified != 0 && !repeat_is_due(repeat_after, last_notified_at.as_deref(), now) {
+        // Resolved per task rather than once per tick: how insistently a
+        // reminder repeats is now the priority's business.
+        let resolved = crate::priority::resolve(&conn, priority);
+        if notified != 0
+            && !repeat_is_due(resolved.repeat_minutes, last_notified_at.as_deref(), now)
+        {
             continue;
         }
+        let profile = profiles.iter().find(|p| p.priority == priority);
         let round = notified + 1;
         conn.execute(
             "UPDATE tasks SET notified = ?1, last_notified_at = ?2 WHERE id = ?3",
             rusqlite::params![round, now.to_rfc3339(), id],
         )
         .map_err(|e| e.to_string())?;
-        due.push(DueReminder { id, title, round });
+        due.push(DueReminder {
+            id,
+            title,
+            round,
+            priority,
+            label: crate::priority::reminder_label(profile),
+            color: crate::priority::reminder_accent(profile),
+            style: resolved.style,
+        });
     }
     Ok(due)
 }

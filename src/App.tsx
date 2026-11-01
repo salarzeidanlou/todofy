@@ -6,7 +6,13 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import { activeCount, useStore } from "./store";
 import { api } from "./lib/api";
-import { parseSoundSettings, playReminderSound, SOUND_KEYS } from "./lib/sound";
+import {
+  customKeysFor,
+  parseSoundSettings,
+  playReminderSound,
+  resolveSoundSettings,
+  SOUND_KEYS,
+} from "./lib/sound";
 import { useAuth } from "./lib/auth";
 import { initSync } from "./lib/sync";
 import { initCalendar } from "./lib/googleCalendar";
@@ -109,19 +115,32 @@ export function App() {
       setView({ kind: "settings" });
     });
     // Played here rather than in the popup window, which may never have had
-    // the user gesture audio playback requires. The payload is the round.
-    const unSound = listen<number>("reminder-sound", async (e) => {
-      const [sound, volume, ramp, data] = await Promise.all([
-        api.getSetting(SOUND_KEYS.sound),
-        api.getSetting(SOUND_KEYS.volume),
-        api.getSetting(SOUND_KEYS.ramp),
-        api.getSetting(SOUND_KEYS.data),
-      ]).catch(() => [null, null, null, null]);
-      playReminderSound(
-        parseSoundSettings({ sound, volume, ramp, data }),
-        e.payload,
-      );
-    });
+    // the user gesture audio playback requires. The payload carries the round,
+    // for the volume ramp, and the priority whose profile picked the sound.
+    const unSound = listen<{ round: number; priority: number }>(
+      "reminder-sound",
+      async (e) => {
+        const perPriority = customKeysFor(e.payload.priority);
+        const [sound, volume, ramp, data, profileData] = await Promise.all([
+          api.getSetting(SOUND_KEYS.sound),
+          api.getSetting(SOUND_KEYS.volume),
+          api.getSetting(SOUND_KEYS.ramp),
+          api.getSetting(SOUND_KEYS.data),
+          api.getSetting(perPriority.data),
+        ]).catch(() => [null, null, null, null, null]);
+        const profile = useStore
+          .getState()
+          .priorityProfiles.find((p) => p.priority === e.payload.priority);
+        playReminderSound(
+          resolveSoundSettings(
+            profile ?? null,
+            parseSoundSettings({ sound, volume, ramp, data }),
+            profileData,
+          ),
+          e.payload.round,
+        );
+      },
+    );
     // Refresh when a task is added from the quick-add window.
     const unAdded = listen("todo-added", () => load());
     // A task was changed from another window (e.g. snoozed from the

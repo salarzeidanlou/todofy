@@ -17,6 +17,11 @@ import {
   readBoardScope,
   type ColumnId,
 } from "./lib/board";
+import {
+  DEFAULT_PROFILES,
+  type PriorityProfile,
+  type PriorityProfileInput,
+} from "./lib/priority";
 import { applyTheme, initialTheme, type Theme } from "./lib/theme";
 import {
   setTimeFormat,
@@ -60,6 +65,13 @@ interface State {
   updateBoardColumn: (id: string, input: BoardColumnInput) => Promise<void>;
   reorderBoardColumns: (ids: string[]) => Promise<void>;
   deleteBoardColumn: (id: string, replacementId: string) => Promise<void>;
+  /** Per-priority names, colors and reminder overrides; see `lib/priority`. */
+  priorityProfiles: PriorityProfile[];
+  updatePriorityProfile: (
+    priority: number,
+    input: PriorityProfileInput,
+  ) => Promise<void>;
+  resetPriorityProfile: (priority: number) => Promise<void>;
   tasks: Task[];
   labels: Label[];
   journal: JournalEntry[];
@@ -171,6 +183,11 @@ export const useStore = create<State>((set, get) => ({
     set({ boardDefinitions, boardNotice: null });
     set({ tasks: sortTasks(await api.listTasks()) });
   },
+  priorityProfiles: DEFAULT_PROFILES,
+  updatePriorityProfile: async (priority, input) =>
+    set({ priorityProfiles: await api.updatePriorityProfile(priority, input) }),
+  resetPriorityProfile: async (priority) =>
+    set({ priorityProfiles: await api.resetPriorityProfile(priority) }),
   tasks: [],
   labels: [],
   journal: [],
@@ -221,13 +238,15 @@ export const useStore = create<State>((set, get) => ({
   load: async () => {
     set({ loading: true });
     // Settled, not all: one failing list must not blank the whole app.
-    const [tasks, labels, journal, events, columns] = await Promise.allSettled([
-      api.listTasks(),
-      api.listLabels(),
-      api.listJournal(),
-      api.listEvents(),
-      api.listBoardColumns(),
-    ]);
+    const [tasks, labels, journal, events, columns, profiles] =
+      await Promise.allSettled([
+        api.listTasks(),
+        api.listLabels(),
+        api.listJournal(),
+        api.listEvents(),
+        api.listBoardColumns(),
+        api.listPriorityProfiles(),
+      ]);
     const failed: string[] = [];
     const keep = <T>(
       result: PromiseSettledResult<T>,
@@ -243,6 +262,7 @@ export const useStore = create<State>((set, get) => ({
       tasks: sortTasks(keep(tasks, "tasks", previous.tasks)),
       labels: keep(labels, "labels", previous.labels),
       boardDefinitions: keep(columns, "board columns", previous.boardDefinitions),
+      priorityProfiles: keep(profiles, "priorities", previous.priorityProfiles),
       journal: keep(journal, "journal", previous.journal),
       events: sortEvents(keep(events, "events", previous.events)),
       loading: false,

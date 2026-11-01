@@ -52,5 +52,6 @@ pub fn notify_update(app: AppHandle, version: String, can_install: bool) {
     } else {
         "Click to see how to update."
     };
-    let _ = crate::notify::deliver(&app, PopupKind::Update, &title, body, None);
+    let style = crate::notify::global_style(&app);
+    let _ = crate::notify::deliver(&app, &style, PopupKind::Update, &title, body, None, None);
 }

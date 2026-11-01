@@ -15,29 +15,59 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_notification::NotificationExt;
 
 /// Show a desktop notification with `title` and `body`, routed per the user's
-/// chosen style. `task_id` lets the custom popup open the right task on click.
-/// Best-effort.
+/// global style setting. `task_id` lets the custom popup open the right task on
+/// click. Best-effort.
+///
+/// Used by notifications that belong to no particular task — a finished
+/// Pomodoro phase, an available update. A reminder goes through
+/// [`deliver_reminder`] instead, since its style comes from its priority.
 pub fn send(app: &AppHandle, title: &str, body: &str, task_id: Option<String>) {
-    let _ = deliver(app, PopupKind::Reminder, title, body, task_id);
+    let style = global_style(app);
+    let _ = deliver(app, &style, PopupKind::Reminder, title, body, None, task_id);
 }
 
-/// Like [`send`] but reports which path delivered it: `"popup"` (custom
+/// A task reminder, routed per the style its priority profile resolved to and
+/// wearing that priority's color.
+pub fn deliver_reminder(
+    app: &AppHandle,
+    style: &str,
+    title: &str,
+    body: &str,
+    accent: &str,
+    task_id: String,
+) {
+    let accent = (!accent.is_empty()).then(|| accent.to_owned());
+    let _ = deliver(
+        app,
+        style,
+        PopupKind::Reminder,
+        title,
+        body,
+        accent,
+        Some(task_id),
+    );
+}
+
+pub fn global_style(app: &AppHandle) -> String {
+    let db = app.state::<Db>();
+    let conn = db.conn();
+    crate::settings::notification_style(&conn)
+}
+
+/// Deliver via `style` and report which path did it: `"popup"` (custom
 /// window), `"portal"`, or `"fallback"`. `Err` means the system paths failed.
 /// Used by the Settings test button so the user sees how it was routed.
 pub fn deliver(
     app: &AppHandle,
+    style: &str,
     kind: PopupKind,
     title: &str,
     body: &str,
+    accent: Option<String>,
     task_id: Option<String>,
 ) -> Result<&'static str, String> {
-    let style = {
-        let db = app.state::<Db>();
-        let conn = db.conn();
-        crate::settings::notification_style(&conn)
-    };
     if style != "native" {
-        crate::popup::show_kind(app, kind, title, body, task_id);
+        crate::popup::show_kind(app, kind, title, body, accent, task_id);
         return Ok("popup");
     }
 
@@ -57,11 +87,14 @@ pub fn deliver(
 /// Send a one-off test notification. Returns the delivery path on success.
 #[tauri::command]
 pub fn send_test_notification(app: AppHandle) -> Result<String, String> {
+    let style = global_style(&app);
     deliver(
         &app,
+        &style,
         PopupKind::Reminder,
         "todofy test notification",
         "If you can see this, desktop notifications are working.",
+        None,
         None,
     )
     .map(str::to_string)

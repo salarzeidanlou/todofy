@@ -45,7 +45,7 @@ Plan your work as a list, a board, or a calendar. Stay focused with timers and r
 - 🏷️ **Labels** — create, rename, recolor (with a full custom color picker), and delete; a searchable Labels page plus per-label filtering
 - 📆 **Beautiful date & time picker** — click the month or year to jump anywhere in seconds, then set the date, the time, and the recurrence in a single pass without the picker closing on you. The time goes into a themed **HH:MM** field that follows your locale, and the one‑tap quick times are yours to edit
 - ⏰ **Reminders that reach you** — desktop notifications fire **even when hidden in the tray**, as either a system notification or todofy's own popup card pinned to a screen corner, with one‑tap **snooze**. Optionally repeat until you actually answer, with a **sound** (built‑in or your own file), a volume, and a ramp that gets louder each time
-- 🚩 **Priorities** — P1–P4 with color‑coded flags
+- 🚩 **Priority profiles** — P1–P4 with color‑coded flags, each one yours to rename and recolor. Give a priority its own reminder too: a sound (built‑in or your own file), a volume, a ramp, a system‑or‑popup notification style, and its own repeat interval. Every one of those is optional and defaults to following **Settings → Notifications**, so the common case stays configured in one place, and names and colors sync with your account while a custom sound file stays on the device you loaded it on. P4 keeps meaning _"no priority"_ and stays out of your way until you name it
 - ⬇️ **Signed self‑updates** — todofy checks for a new version quietly once a day and can install it for you. Turn on **Install automatically** and it offers the update as soon as it finds one, shows you what's new, and handles the rest — but it never downloads without asking and never restarts on its own, and a question that arrives while todofy is in the tray waits until you're back at the window. Progress follows you around the app as a ring in the top bar. Every bundle is cryptographically signed and verified before install, so a tampered build is refused; `.deb` and `.rpm` installs are pointed at the release page rather than replaced behind your package manager's back
 - ⚙️ **Settings & run‑on‑startup** — launch todofy at login, opening the window or starting quietly in the tray
 - 🌍 **Follows your system** — 12‑ or 24‑hour clock and the day your week starts on are taken from your desktop's regional settings, with an explicit override if you'd rather choose
@@ -53,7 +53,7 @@ Plan your work as a list, a board, or a calendar. Stay focused with timers and r
 - ⌨️ **Keyboard‑first** — add, navigate, complete, and edit without touching the mouse
 - 🪟 **System tray** — closes to tray and keeps running so reminders never miss; start/pause the Pomodoro, pause or stop the task timer, and watch the live countdown right from the tray
 - 🧭 **Date-oriented navigation** — move between smart views from the top navigation bar and use the day rail to jump through your schedule
-- ☁️ **Optional account sync** — official Todofy Cloud Sync is a Pro feature at **€3.99/month or €39/year**; local use stays free, and the source-available self-hosting setup remains documented below. Buy securely in Lemon Squeezy before or after creating an account, then return to Todofy, sign in, and activate the emailed license for that account. Sign in with email/password or **Continue with Google** to sync tasks, board column settings, labels, focus history, and journal across devices (backed by Supabase, with row‑level security). Sessions are kept in your OS secret store. If you switch accounts on one installation, Todofy pauses before syncing and lets you load the new account's cloud data or safely copy the current device data into it with new record IDs
+- ☁️ **Optional account sync** — official Todofy Cloud Sync is a Pro feature at **€3.99/month or €39/year**; local use stays free, and the source-available self-hosting setup remains documented below. Buy securely in Lemon Squeezy before or after creating an account, then return to Todofy, sign in, and activate the emailed license for that account. Sign in with email/password or **Continue with Google** to sync tasks, board column settings, priority profiles, labels, focus history, and journal across devices (backed by Supabase, with row‑level security). Sessions are kept in your OS secret store. If you switch accounts on one installation, Todofy pauses before syncing and lets you load the new account's cloud data or safely copy the current device data into it with new record IDs
 - 🗓️ **Local calendar** — plan in month, week, or day views, with tasks on their due dates and standalone all-day or timed events you can create and edit. Standalone events stay on this device and are not included in account sync or pushed to Google
 - 📅 **Google Calendar sync** — push your dated tasks to a dedicated **todofy** calendar (one‑way) so they sit right beside your meetings: all‑day for date‑only tasks, timed for tasks with a reminder. Recurring tasks move as they roll, completed and deleted tasks tidy themselves up, and you can keep finished tasks or limit the push to timed tasks only. Opt‑in, gated behind account sign‑in
 - 🗑️ **Delete your account** — cancel any linked recurring Todofy subscription first, then remove your current account and all of its cloud data; optionally wipe the copy on this device too. If cancellation cannot be confirmed, deletion stops safely so you can retry. You can register a fresh account later with the same email address
@@ -121,8 +121,9 @@ To test voice input from source with local engine and model files, follow [local
 ## ☁️ Todofy Pro
 
 Todofy stays fully useful offline without an account. **Todofy Pro** adds official
-Cloud Sync for **€3.99/month or €39/year**, covering tasks, labels, focus history,
-and journal entries across your signed-in devices.
+Cloud Sync for **€3.99/month or €39/year**, covering tasks, labels, board and
+priority settings, focus history, and journal entries across your signed-in
+devices.
 
 Open **Pro** inside Todofy to choose a plan, complete checkout securely in your
 browser, then return to the app and activate the license from your receipt. An
@@ -274,8 +275,10 @@ Sync is **off by default** — todofy is local‑first and works fully offline w
    | 4   | [`20260909120000_task_estimate.sql`](supabase/migrations/20260909120000_task_estimate.sql)     | `tasks.estimate_minutes`                                     |
    | 5   | [`20260914120000_sync_pull.sql`](supabase/migrations/20260914120000_sync_pull.sql)             | The `sync_pull` function, one request per poll               |
    | 6   | [`20260918120000_task_board.sql`](supabase/migrations/20260918120000_task_board.sql)           | `tasks.stage` and `tasks.board_index` for the board          |
+   | 7   | [`20261014100423_custom_board_columns.sql`](supabase/migrations/20261014100423_custom_board_columns.sql) | `board_columns` and the `sync_board_columns` function   |
+   | 8   | [`20261031120000_priority_profiles.sql`](supabase/migrations/20261031120000_priority_profiles.sql) | `priority_profiles` and the `sync_priority_profiles` function |
 
-   Every migration is additive and idempotent, so re‑running one is safe and an older client keeps working against a newer schema. Applying them all matters: the desktop app writes every column it knows about, so a missing one fails the whole sync rather than just its own feature.
+   Every migration is additive, and an older client keeps working against a newer schema — so you can apply new ones as you update. Apply each file **once**, in order: most of the earlier ones create tables and policies unconditionally and will error on a second run rather than quietly doing nothing. Applying them all matters: the desktop app writes every column it knows about, so a missing one fails the whole sync rather than just its own feature.
 
    Or use the [Supabase CLI](https://supabase.com/docs/guides/cli):
 
@@ -284,7 +287,7 @@ Sync is **off by default** — todofy is local‑first and works fully offline w
    supabase db push
    ```
 
-   Everything lands in the default `public` schema: five per‑user content tables plus the content-free `sync_tombstones` deletion log. All of them use row-level security, so signed-in users can only access their own rows. Deleted content is physically removed after its marker is safely recorded, allowing other devices to learn the deletion without retaining task or journal text.
+   Everything lands in the default `public` schema: five per‑user content tables, two account-metadata tables for the board's columns and the priority profiles, plus the content-free `sync_tombstones` deletion log. All of them use row-level security, so signed-in users can only access their own rows. Deleted content is physically removed after its marker is safely recorded, allowing other devices to learn the deletion without retaining task or journal text.
 
 3. **Point todofy at your project.** Copy the env template and fill in your project's URL and publishable key — both are safe to ship in a client; row‑level security is what actually protects the data:
 
@@ -362,7 +365,8 @@ todofy/
 │   │                       #     JournalView, SettingsView, …)
 │   ├── lib/                # dates, duration, locale, sound, tracking, theme,
 │   │                       #     keyboard, nlp, repeat, markdown, journal,
-│   │                       #     board columns, ordering, drag helpers
+│   │                       #     board columns, priority profiles, ordering,
+│   │                       #     drag helpers
 │   ├── store.ts            # Zustand store
 │   └── types.ts
 ├── src-tauri/              # Rust backend
@@ -370,6 +374,7 @@ todofy/
 │       ├── commands.rs     # task & label CRUD (Tauri commands)
 │       ├── db.rs           # SQLite schema & migrations
 │       ├── board.rs        # column settings, ordering & safe deletion
+│       ├── priority.rs     # priority names, colors & reminder overrides
 │       ├── recur.rs        # recurring-task date math
 │       ├── timer.rs        # focus timers (Pomodoro + per-task stopwatch)
 │       ├── settings.rs     # app settings & run-on-startup
@@ -407,7 +412,7 @@ todofy/
 - [x] Kanban board with drag between columns
 - [x] Custom board columns (create, rename, recolor, reorder, safely delete, and sync) — v1.14.0
 - [x] Optional WIP limits with total active-task counts and warnings — v1.14.0
-- [ ] Priority profiles (per-priority names, colors, sounds, and notification styles)
+- [x] Priority profiles (per-priority names, colors, sounds, notification styles, and sync) — v1.15.0
 
 ## 🤝 Contributing
 

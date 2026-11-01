@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { PriorityProfile, PriorityProfileInput } from "./priority";
 import type {
   ActiveTimer,
   BoardColumnDefinition,
@@ -23,6 +24,14 @@ export const api = {
   updateBoardColumn: (id: string, input: BoardColumnInput) => invoke<BoardColumnDefinition[]>("update_board_column", { id, input }),
   reorderBoardColumns: (ids: string[]) => invoke<BoardColumnDefinition[]>("reorder_board_columns", { ids }),
   deleteBoardColumn: (id: string, replacementId: string) => invoke<BoardColumnDefinition[]>("delete_board_column", { id, replacementId }),
+
+  listPriorityProfiles: () =>
+    invoke<PriorityProfile[]>("list_priority_profiles"),
+  updatePriorityProfile: (priority: number, input: PriorityProfileInput) =>
+    invoke<PriorityProfile[]>("update_priority_profile", { priority, input }),
+  resetPriorityProfile: (priority: number) =>
+    invoke<PriorityProfile[]>("reset_priority_profile", { priority }),
+
   listTasks: () => invoke<Task[]>("list_tasks"),
   createTask: (task: NewTask) => invoke<Task>("create_task", { task }),
   updateTask: (patch: TaskPatch) => invoke<Task>("update_task", { patch }),
