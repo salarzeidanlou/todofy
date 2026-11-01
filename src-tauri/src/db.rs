@@ -988,7 +988,9 @@ mod tests {
     /// reports) copy that single file and expect their tasks to be in it.
     #[test]
     fn checkpoint_leaves_a_self_contained_main_file() {
-        let dir = std::env::temp_dir().join(format!("todofy-ckpt-{}", std::process::id()));
+        // Per-run, not per-pid: pids recycle, and a leaked dir from an earlier
+        // failed run would fail the INSERT below on a duplicate id.
+        let dir = std::env::temp_dir().join(format!("todofy-ckpt-{}", new_uuid()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("todofy.db");
 
