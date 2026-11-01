@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
 import {
   DEFAULT_PROFILES,
+  PRIORITY_SEED_TIME,
   clampPriority,
   hasOverrides,
+  inputOf,
   isCustomized,
   priorityColor,
   priorityTag,
@@ -128,4 +130,38 @@ test("overrides are what mark a profile as having its own reminder", () => {
   expect(hasOverrides(profile({ repeatMinutes: 0 }))).toBe(true);
   expect(hasOverrides(profile({ volume: 0 }))).toBe(true);
   expect(hasOverrides(profile({ ramp: false }))).toBe(true);
+});
+
+/**
+ * The backend defaults every absent override to `None`, so a field the editor
+ * omitted would read as "leave it alone" rather than "clear it" — and the user
+ * would be unable to hand a priority back to the global settings.
+ */
+test("the editor sends every override field, nulls included", () => {
+  const input = inputOf(
+    profile({ sound: null, volume: null, ramp: null, repeatMinutes: null }),
+  );
+  expect(Object.keys(input).sort()).toEqual([
+    "color",
+    "name",
+    "notificationStyle",
+    "ramp",
+    "repeatMinutes",
+    "sound",
+    "volume",
+  ]);
+  expect(input).not.toHaveProperty("priority");
+  expect(input).not.toHaveProperty("updatedAt");
+});
+
+/**
+ * Last-write-wins means a fresh install's untouched profiles must lose to the
+ * ones customized on another device. They can only do that by carrying a
+ * revision older than any real edit — the same one the board's seeds use.
+ */
+test("untouched profiles carry the ancient seed revision", () => {
+  expect(PRIORITY_SEED_TIME).toBe("1970-01-01T00:00:01Z");
+  for (const built of DEFAULT_PROFILES) {
+    expect(built.updatedAt).toBe(PRIORITY_SEED_TIME);
+  }
 });

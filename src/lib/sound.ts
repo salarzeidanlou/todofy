@@ -75,14 +75,6 @@ export function customKeysFor(priority: number): {
   };
 }
 
-/** Every key a priority's own sound occupies, for the account-switch paths. */
-export function allCustomKeys(): string[] {
-  return [1, 2, 3, 4].flatMap((priority) => {
-    const keys = customKeysFor(priority);
-    return [keys.data, keys.name];
-  });
-}
-
 /**
  * Fold a priority's sound overrides over the global settings.
  *

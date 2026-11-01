@@ -133,10 +133,61 @@ impl From<&SyncBoardColumn> for crate::board::BoardColumn {
     }
 }
 
+/// There are always exactly four of these and they are keyed by their number,
+/// so unlike a board column a profile has no identity to carry and no deletion
+/// to record. The custom sound's bytes are absent by design; see
+/// [`crate::priority::custom_sound_keys`].
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SyncPriorityProfile {
+    pub priority: i64,
+    pub name: String,
+    pub color: String,
+    pub sound: Option<String>,
+    pub volume: Option<i64>,
+    pub ramp: Option<bool>,
+    pub notification_style: Option<String>,
+    pub repeat_minutes: Option<i64>,
+    pub updated_at: String,
+}
+impl From<crate::priority::PriorityProfile> for SyncPriorityProfile {
+    fn from(p: crate::priority::PriorityProfile) -> Self {
+        Self {
+            priority: p.priority,
+            name: p.name,
+            color: p.color,
+            sound: p.sound,
+            volume: p.volume,
+            ramp: p.ramp,
+            notification_style: p.notification_style,
+            repeat_minutes: p.repeat_minutes,
+            updated_at: p.updated_at,
+        }
+    }
+}
+impl From<&SyncPriorityProfile> for crate::priority::PriorityProfile {
+    fn from(p: &SyncPriorityProfile) -> Self {
+        Self {
+            priority: p.priority,
+            name: p.name.clone(),
+            color: p.color.clone(),
+            sound: p.sound.clone(),
+            volume: p.volume,
+            ramp: p.ramp,
+            notification_style: p.notification_style.clone(),
+            repeat_minutes: p.repeat_minutes,
+            updated_at: p.updated_at.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct SyncBundle {
     #[serde(default)]
     pub board_columns: Vec<SyncBoardColumn>,
+    /// Defaulted so a pull from a project whose `sync_pull` predates the
+    /// priority-profiles migration still deserializes instead of failing.
+    #[serde(default)]
+    pub priority_profiles: Vec<SyncPriorityProfile>,
     pub tasks: Vec<SyncTask>,
     pub labels: Vec<SyncLabel>,
     pub task_labels: Vec<SyncTaskLabel>,
@@ -396,8 +447,15 @@ fn collect_changes(conn: &Connection, since: &str) -> rusqlite::Result<SyncBundl
         .filter(|c| first_board_sync || newer(&c.updated_at, since))
         .map(SyncBoardColumn::from)
         .collect();
+    let first_priority_sync = settings::read(conn, crate::priority::SYNC_READY_KEY).is_none();
+    let priority_profiles = crate::priority::list(conn)?
+        .into_iter()
+        .filter(|p| first_priority_sync || newer(&p.updated_at, since))
+        .map(SyncPriorityProfile::from)
+        .collect();
     Ok(SyncBundle {
         board_columns,
+        priority_profiles,
         tasks,
         labels,
         task_labels,
@@ -475,6 +533,9 @@ fn local_updated_at(conn: &Connection, sql: &str, key: &[&dyn rusqlite::ToSql]) 
 fn apply_bundle(conn: &Connection, remote: &SyncBundle) -> rusqlite::Result<()> {
     for column in &remote.board_columns {
         crate::board::apply_remote(conn, &column.into())?;
+    }
+    for profile in &remote.priority_profiles {
+        crate::priority::apply_remote(conn, &profile.into())?;
     }
     for l in &remote.labels {
         let local = local_updated_at(
@@ -723,7 +784,8 @@ fn has_local_sync_data(conn: &Connection) -> rusqlite::Result<bool> {
              OR EXISTS(SELECT 1 FROM task_labels)
              OR EXISTS(SELECT 1 FROM time_sessions)
              OR EXISTS(SELECT 1 FROM journal_entries)
-             OR EXISTS(SELECT 1 FROM board_columns WHERE updated_at != '1970-01-01T00:00:01Z')",
+             OR EXISTS(SELECT 1 FROM board_columns WHERE updated_at != '1970-01-01T00:00:01Z')
+             OR EXISTS(SELECT 1 FROM priority_profiles WHERE updated_at != '1970-01-01T00:00:01Z')",
         [],
         |row| row.get::<_, bool>(0),
     )
@@ -745,6 +807,15 @@ pub fn sync_claim_owner(db: State<Db>, user_id: String) -> Result<(), String> {
     settings::write(&conn, OWNER_KEY, &user_id).map_err(|e| e.to_string())
 }
 
+/// Forget every priority's own custom reminder sound. Those bytes stay on the
+/// device, so no pull can replace them.
+fn clear_custom_sounds(conn: &Connection) -> rusqlite::Result<()> {
+    for key in crate::priority::custom_sound_keys() {
+        conn.execute("DELETE FROM settings WHERE key = ?1", [&key])?;
+    }
+    Ok(())
+}
+
 /// Discard only account-synced local content, retain device-local calendar
 /// events/settings, then let the next epoch sync load the selected account.
 #[tauri::command]
@@ -763,13 +834,21 @@ fn use_account_data_inner(conn: &mut Connection, user_id: &str) -> rusqlite::Res
         "labels",
         "journal_entries",
         "board_columns",
+        "priority_profiles",
     ] {
         tx.execute(&format!("DELETE FROM {table}"), [])?;
     }
     crate::board::init(&tx)?;
+    crate::priority::init(&tx)?;
+    // The previous account's custom reminder sounds are device-local, so no
+    // pull can replace them and nothing else would ever clear them.
+    clear_custom_sounds(&tx)?;
     tx.execute(
-        "DELETE FROM settings WHERE key = ?1",
-        [crate::board::SYNC_READY_KEY],
+        "DELETE FROM settings WHERE key IN (?1, ?2)",
+        params![
+            crate::board::SYNC_READY_KEY,
+            crate::priority::SYNC_READY_KEY
+        ],
     )?;
     settings::write(&tx, OWNER_KEY, user_id)?;
     settings::write(&tx, WATERMARK_KEY, EPOCH)?;
@@ -869,9 +948,16 @@ fn copy_local_data_inner(conn: &mut Connection, user_id: &str) -> rusqlite::Resu
         )?;
     }
     tx.execute("UPDATE board_columns SET updated_at = ?1", [&now])?;
+    // Profiles are keyed by their number, so there is nothing to rekey — but
+    // they still have to out-revise whatever sits in the account being copied
+    // into. Their custom sounds are this device's and stay put.
+    tx.execute("UPDATE priority_profiles SET updated_at = ?1", [&now])?;
     tx.execute(
-        "DELETE FROM settings WHERE key = ?1",
-        [crate::board::SYNC_READY_KEY],
+        "DELETE FROM settings WHERE key IN (?1, ?2)",
+        params![
+            crate::board::SYNC_READY_KEY,
+            crate::priority::SYNC_READY_KEY
+        ],
     )?;
 
     for (old_task, old_label) in associations {
@@ -941,6 +1027,7 @@ pub fn sync_set_watermark(db: State<Db>, value: String) -> Result<(), String> {
     let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
     settings::write(&tx, WATERMARK_KEY, &value).map_err(|e| e.to_string())?;
     settings::write(&tx, crate::board::SYNC_READY_KEY, "1").map_err(|e| e.to_string())?;
+    settings::write(&tx, crate::priority::SYNC_READY_KEY, "1").map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())
 }
 
@@ -950,8 +1037,11 @@ pub fn sync_set_watermark(db: State<Db>, value: String) -> Result<(), String> {
 pub fn sync_reset(db: State<Db>) -> Result<(), String> {
     let conn = db.conn();
     conn.execute(
-        "DELETE FROM settings WHERE key = ?1",
-        [crate::board::SYNC_READY_KEY],
+        "DELETE FROM settings WHERE key IN (?1, ?2)",
+        params![
+            crate::board::SYNC_READY_KEY,
+            crate::priority::SYNC_READY_KEY
+        ],
     )
     .map_err(|e| e.to_string())?;
     settings::write(&conn, WATERMARK_KEY, EPOCH).map_err(|e| e.to_string())
@@ -972,13 +1062,20 @@ fn wipe_local_data_inner(conn: &Connection) -> rusqlite::Result<()> {
         "labels",
         "journal_entries",
         "board_columns",
+        "priority_profiles",
     ] {
         conn.execute(&format!("DELETE FROM {table}"), [])?;
     }
     crate::board::init(conn)?;
+    crate::priority::init(conn)?;
+    clear_custom_sounds(conn)?;
     conn.execute(
-        "DELETE FROM settings WHERE key IN (?1, ?2)",
-        params![OWNER_KEY, crate::board::SYNC_READY_KEY],
+        "DELETE FROM settings WHERE key IN (?1, ?2, ?3)",
+        params![
+            OWNER_KEY,
+            crate::board::SYNC_READY_KEY,
+            crate::priority::SYNC_READY_KEY
+        ],
     )?;
     settings::write(conn, WATERMARK_KEY, EPOCH)
 }
@@ -1135,6 +1232,7 @@ mod tests {
         let conn = setup();
         let bundle = SyncBundle {
             board_columns: vec![],
+            priority_profiles: vec![],
             labels: vec![SyncLabel {
                 id: "l1".into(),
                 name: "home".into(),
@@ -1705,5 +1803,314 @@ mod column_sync_tests {
         assert!(!has_local_sync_data(&c).unwrap());
         custom(&c);
         assert!(has_local_sync_data(&c).unwrap());
+    }
+}
+
+#[cfg(test)]
+mod priority_sync_tests {
+    use super::*;
+    use crate::{db, priority};
+
+    fn setup() -> Connection {
+        let c = Connection::open_in_memory().unwrap();
+        db::init(&c).unwrap();
+        c
+    }
+
+    fn urgent() -> priority::ProfileInput {
+        priority::ProfileInput {
+            name: "Urgent".into(),
+            color: "#38bdf8".into(),
+            sound: Some("bell".into()),
+            volume: Some(90),
+            ramp: Some(true),
+            notification_style: Some("native".into()),
+            repeat_minutes: Some(2),
+        }
+    }
+
+    fn profile(c: &Connection, value: i64) -> priority::PriorityProfile {
+        priority::list(c)
+            .unwrap()
+            .into_iter()
+            .find(|p| p.priority == value)
+            .expect("every priority has a row")
+    }
+
+    /// A profile has no identity of its own, so "did it arrive" is entirely a
+    /// question of whether its contents replaced the right row.
+    #[test]
+    fn profiles_round_trip_and_seeds_cannot_overwrite_a_customized_profile() {
+        let source = setup();
+        priority::update(&source, 1, &urgent()).unwrap();
+        let bundle = collect_changes(&source, EPOCH).unwrap();
+        assert_eq!(bundle.priority_profiles.len(), 4);
+
+        let fresh = setup();
+        apply_bundle(&fresh, &bundle).unwrap();
+        let first = profile(&fresh, 1);
+        assert_eq!(first.name, "Urgent");
+        assert_eq!(first.color, "#38bdf8");
+        assert_eq!(first.sound.as_deref(), Some("bell"));
+        assert_eq!(first.volume, Some(90));
+        assert_eq!(first.ramp, Some(true));
+        assert_eq!(first.notification_style.as_deref(), Some("native"));
+        assert_eq!(first.repeat_minutes, Some(2));
+        assert_eq!(profile(&fresh, 2).name, "Priority 2", "and the rest alone");
+
+        // A fresh install signing in pushes four seeds at SEED_TIME. They must
+        // lose to the customized row rather than reset it.
+        let seeds = collect_changes(&setup(), EPOCH).unwrap();
+        apply_bundle(&fresh, &seeds).unwrap();
+        assert_eq!(profile(&fresh, 1).name, "Urgent");
+        assert_eq!(priority::list(&fresh).unwrap().len(), 4, "and adds no P5");
+    }
+
+    /// Each of these is the user saying "this one is quiet / fires once", which
+    /// a round trip must not flatten back into "follow the global setting".
+    #[test]
+    fn the_overrides_that_mean_off_survive_a_round_trip() {
+        let source = setup();
+        priority::update(
+            &source,
+            3,
+            &priority::ProfileInput {
+                sound: Some("none".into()),
+                volume: Some(0),
+                ramp: Some(false),
+                repeat_minutes: Some(0),
+                ..urgent()
+            },
+        )
+        .unwrap();
+        let fresh = setup();
+        apply_bundle(&fresh, &collect_changes(&source, EPOCH).unwrap()).unwrap();
+        let third = profile(&fresh, 3);
+        assert_eq!(third.sound.as_deref(), Some("none"));
+        assert_eq!(third.volume, Some(0));
+        assert_eq!(third.ramp, Some(false));
+        assert_eq!(third.repeat_minutes, Some(0));
+        assert_eq!(priority::resolve(&fresh, 3).repeat_minutes, None);
+    }
+
+    /// And clearing an override has to travel as a null, not as "unchanged".
+    #[test]
+    fn clearing_an_override_syncs_as_a_return_to_inheriting() {
+        let source = setup();
+        priority::update(&source, 2, &urgent()).unwrap();
+        let fresh = setup();
+        apply_bundle(&fresh, &collect_changes(&source, EPOCH).unwrap()).unwrap();
+        assert_eq!(profile(&fresh, 2).sound.as_deref(), Some("bell"));
+
+        priority::update(
+            &source,
+            2,
+            &priority::ProfileInput {
+                sound: None,
+                volume: None,
+                ramp: None,
+                notification_style: None,
+                repeat_minutes: None,
+                ..urgent()
+            },
+        )
+        .unwrap();
+        apply_bundle(&fresh, &collect_changes(&source, EPOCH).unwrap()).unwrap();
+        let second = profile(&fresh, 2);
+        assert_eq!(second.name, "Urgent", "the name is not an override");
+        assert_eq!(second.sound, None);
+        assert_eq!(second.volume, None);
+        assert_eq!(second.ramp, None);
+        assert_eq!(second.notification_style, None);
+        assert_eq!(second.repeat_minutes, None);
+    }
+
+    #[test]
+    fn a_stale_remote_revision_loses_and_a_newer_one_wins() {
+        let local = setup();
+        priority::update(&local, 1, &urgent()).unwrap();
+        let mut bundle = collect_changes(&setup(), EPOCH).unwrap();
+        bundle
+            .priority_profiles
+            .iter_mut()
+            .for_each(|p| p.name = "Stale".into());
+        apply_bundle(&local, &bundle).unwrap();
+        assert_eq!(profile(&local, 1).name, "Urgent");
+
+        bundle.priority_profiles.iter_mut().for_each(|p| {
+            p.name = "Newer".into();
+            p.updated_at = "2099-01-01T00:00:00Z".into();
+        });
+        apply_bundle(&local, &bundle).unwrap();
+        assert_eq!(profile(&local, 1).name, "Newer");
+    }
+
+    /// A malformed row has to fail the pull rather than be stored: a color the
+    /// UI cannot paint or a sound it cannot play would reach every device.
+    #[test]
+    fn a_malformed_remote_profile_is_rejected() {
+        let c = setup();
+        let bundle = |change: fn(&mut SyncPriorityProfile)| {
+            let mut b = collect_changes(&setup(), EPOCH).unwrap();
+            b.priority_profiles.truncate(1);
+            change(&mut b.priority_profiles[0]);
+            b
+        };
+        assert!(apply_bundle(&c, &bundle(|p| p.color = "red".into())).is_err());
+        assert!(apply_bundle(&c, &bundle(|p| p.name = "  ".into())).is_err());
+        assert!(apply_bundle(&c, &bundle(|p| p.sound = Some("airhorn".into()))).is_err());
+        assert!(apply_bundle(&c, &bundle(|p| p.volume = Some(101))).is_err());
+        assert!(apply_bundle(&c, &bundle(|p| p.repeat_minutes = Some(-1))).is_err());
+        assert!(apply_bundle(&c, &bundle(|p| p.priority = 5)).is_err());
+        assert!(apply_bundle(&c, &bundle(|p| p.updated_at = "never".into())).is_err());
+        assert_eq!(profile(&c, 1).name, "Priority 1", "and nothing was stored");
+    }
+
+    #[test]
+    fn first_priority_sync_includes_seeds_below_the_watermark_then_backs_off() {
+        let c = setup();
+        assert_eq!(
+            collect_changes(&c, "2026-01-01T00:00:00Z")
+                .unwrap()
+                .priority_profiles
+                .len(),
+            4
+        );
+        settings::write(&c, priority::SYNC_READY_KEY, "1").unwrap();
+        assert!(collect_changes(&c, "2026-01-01T00:00:00Z")
+            .unwrap()
+            .priority_profiles
+            .is_empty());
+
+        // An untouched set of profiles is not data worth prompting about, but a
+        // customized one is.
+        assert!(!has_local_sync_data(&c).unwrap());
+        priority::update(&c, 1, &urgent()).unwrap();
+        assert!(has_local_sync_data(&c).unwrap());
+        assert_eq!(
+            collect_changes(&c, "2026-01-01T00:00:00Z")
+                .unwrap()
+                .priority_profiles
+                .len(),
+            1,
+            "and only the edited one is pushed from then on"
+        );
+    }
+
+    /// The bytes of a custom sound stay on the device that loaded them, so the
+    /// bundle carries only the *choice* of "custom".
+    #[test]
+    fn a_custom_sounds_bytes_never_enter_the_bundle() {
+        let c = setup();
+        priority::update(
+            &c,
+            1,
+            &priority::ProfileInput {
+                sound: Some("custom".into()),
+                ..urgent()
+            },
+        )
+        .unwrap();
+        settings::write(&c, "reminder_sound_data_p1", "AAAABBBB").unwrap();
+        let json = serde_json::to_string(&collect_changes(&c, EPOCH).unwrap()).unwrap();
+        assert!(json.contains("\"custom\""), "the choice travels");
+        assert!(!json.contains("AAAABBBB"), "the audio does not");
+    }
+
+    /// Field names have to match the Postgres columns, because the bundle rows
+    /// are forwarded to `sync_priority_profiles` unremapped. The frontend-facing
+    /// struct is camelCase; this one must not be.
+    #[test]
+    fn serializes_as_the_columns_postgres_expects() {
+        let c = setup();
+        priority::update(&c, 1, &urgent()).unwrap();
+        let bundle = serde_json::to_value(collect_changes(&c, EPOCH).unwrap()).unwrap();
+        let row = &bundle["priority_profiles"][0];
+        assert_eq!(row["priority"], 1);
+        assert_eq!(row["name"], "Urgent");
+        assert_eq!(row["color"], "#38bdf8");
+        assert_eq!(row["sound"], "bell");
+        assert_eq!(row["volume"], 90);
+        assert_eq!(row["ramp"], true);
+        assert_eq!(row["notification_style"], "native");
+        assert_eq!(row["repeat_minutes"], 2);
+        assert!(row["updated_at"].is_string());
+        assert!(row.get("notificationStyle").is_none());
+    }
+
+    /// A pull from a project whose `sync_pull` predates the migration has no
+    /// `priority_profiles` key at all; that must not fail the whole round.
+    #[test]
+    fn a_bundle_from_before_the_migration_still_applies() {
+        let c = setup();
+        let bundle: SyncBundle = serde_json::from_str(
+            r#"{"tasks":[],"labels":[],"task_labels":[],"sessions":[],"journal":[]}"#,
+        )
+        .unwrap();
+        assert!(bundle.priority_profiles.is_empty());
+        apply_bundle(&c, &bundle).unwrap();
+        assert_eq!(profile(&c, 1).name, "Priority 1");
+    }
+
+    #[test]
+    fn switching_accounts_reseeds_profiles_and_forgets_this_devices_sounds() {
+        let mut c = setup();
+        priority::update(&c, 1, &urgent()).unwrap();
+        settings::write(&c, "reminder_sound_data_p1", "AAAABBBB").unwrap();
+        settings::write(&c, priority::SYNC_READY_KEY, "1").unwrap();
+
+        use_account_data_inner(&mut c, "22222222-2222-4222-8222-222222222222").unwrap();
+        assert_eq!(priority::list(&c).unwrap().len(), 4);
+        let first = profile(&c, 1);
+        assert_eq!(first.name, "Priority 1");
+        assert_eq!(
+            first.updated_at,
+            priority::SEED_TIME,
+            "back to never-touched"
+        );
+        assert_eq!(
+            settings::read(&c, "reminder_sound_data_p1"),
+            None,
+            "the previous account's audio is not the new account's"
+        );
+        assert_eq!(settings::read(&c, priority::SYNC_READY_KEY), None);
+    }
+
+    /// Copying into another account rekeys everything that has an ID. Profiles
+    /// have none, so instead they are restamped — otherwise the seeds already
+    /// in the destination account would out-revise them and the user would
+    /// watch their names revert.
+    #[test]
+    fn copying_into_an_account_restamps_profiles_and_keeps_the_local_sound() {
+        let mut c = setup();
+        priority::update(&c, 1, &urgent()).unwrap();
+        settings::write(&c, "reminder_sound_data_p1", "AAAABBBB").unwrap();
+
+        copy_local_data_inner(&mut c, "11111111-1111-4111-8111-111111111111").unwrap();
+        let first = profile(&c, 1);
+        assert_eq!(first.name, "Urgent", "the customization comes along");
+        assert_ne!(first.updated_at, priority::SEED_TIME);
+        assert_eq!(
+            settings::read(&c, "reminder_sound_data_p1").as_deref(),
+            Some("AAAABBBB"),
+            "and it is the same device, so its audio stays"
+        );
+
+        // Restamped high enough to win against an untouched destination.
+        let destination = setup();
+        apply_bundle(&destination, &collect_changes(&c, EPOCH).unwrap()).unwrap();
+        assert_eq!(profile(&destination, 1).name, "Urgent");
+    }
+
+    #[test]
+    fn wiping_local_data_takes_the_profiles_and_their_sounds_with_it() {
+        let c = setup();
+        priority::update(&c, 4, &urgent()).unwrap();
+        settings::write(&c, "reminder_sound_data_p4", "AAAABBBB").unwrap();
+        wipe_local_data_inner(&c).unwrap();
+        assert_eq!(priority::list(&c).unwrap().len(), 4);
+        assert_eq!(profile(&c, 4).name, "Priority 4");
+        assert_eq!(profile(&c, 4).updated_at, priority::SEED_TIME);
+        assert_eq!(settings::read(&c, "reminder_sound_data_p4"), None);
     }
 }

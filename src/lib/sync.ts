@@ -20,6 +20,7 @@ interface SyncTombstone extends SyncRow {
 
 interface Bundle {
   board_columns: SyncRow[];
+  priority_profiles: SyncRow[];
   tasks: SyncRow[];
   labels: SyncRow[];
   task_labels: SyncRow[];
@@ -235,6 +236,9 @@ function bundlesOverlap(a: Bundle, b: Bundle): boolean {
     `${row.task_id ?? ""}:${row.label_id ?? ""}`;
   const tombstone = (row: SyncRow) =>
     `${row.entity_type ?? ""}:${row.entity_id ?? ""}`;
+  // Priority profiles are left out for the same reason the built-in columns
+  // are: all four exist on every device from first launch, so a match between
+  // them says nothing about whether this is the same data.
   return (
     overlaps(a.board_columns.filter((c) => !["todo", "doing", "blocked", "done"].includes(String(c.id))), b.board_columns, id) ||
     overlaps(a.tasks, b.tasks, id) ||
@@ -253,6 +257,7 @@ async function pull(since: string): Promise<Bundle> {
   const bundle = (data ?? {}) as Partial<Bundle>;
   return {
     board_columns: bundle.board_columns ?? [],
+    priority_profiles: bundle.priority_profiles ?? [],
     labels: bundle.labels ?? [],
     tasks: bundle.tasks ?? [],
     task_labels: bundle.task_labels ?? [],
@@ -267,6 +272,10 @@ async function push(local: Bundle): Promise<void> {
   if (local.board_columns.length) {
     const { error } = await supabase.rpc("sync_board_columns", { changes: local.board_columns });
     if (error) throw new Error(`Could not sync board columns. Apply the custom_board_columns database migration. ${error.message}`);
+  }
+  if (local.priority_profiles.length) {
+    const { error } = await supabase.rpc("sync_priority_profiles", { changes: local.priority_profiles });
+    if (error) throw new Error(`Could not sync priorities. Apply the priority_profiles database migration. ${error.message}`);
   }
   const upsert = async (
     table: string,
@@ -457,6 +466,7 @@ export function initSync() {
   useStore.subscribe((state, prev) => {
     if (
       state.boardDefinitions !== prev.boardDefinitions ||
+      state.priorityProfiles !== prev.priorityProfiles ||
       state.tasks !== prev.tasks ||
       state.labels !== prev.labels ||
       state.journal !== prev.journal

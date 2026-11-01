@@ -21,6 +21,12 @@ use tauri::State;
 /// another device.
 pub const SEED_TIME: &str = crate::board::SEED_TIME;
 
+/// Set once this device has completed a sync round. Until then the push side
+/// sends all four profiles regardless of the watermark: seeds sit at
+/// [`SEED_TIME`], which is below every watermark, so without this the cloud
+/// would never see them.
+pub const SYNC_READY_KEY: &str = "priority_profiles_synced";
+
 pub const VALUES: [i64; 4] = [1, 2, 3, 4];
 
 /// Matching `--color-prio-1..4` in `styles/global.css` and `DEFAULT_PROFILES`
@@ -164,7 +170,9 @@ pub fn validate(input: &ProfileInput) -> rusqlite::Result<()> {
         .repeat_minutes
         .is_some_and(|n| !(0..=MAX_REPEAT_MINUTES).contains(&n))
     {
-        return Err(invalid("Repeat interval must be between 0 and 1440 minutes"));
+        return Err(invalid(
+            "Repeat interval must be between 0 and 1440 minutes",
+        ));
     }
     Ok(())
 }
@@ -236,6 +244,82 @@ pub fn reset_priority_profile(
     priority: i64,
 ) -> Result<Vec<PriorityProfile>, String> {
     reset(&db.conn(), priority).map_err(|e| e.to_string())
+}
+
+/// Merge a profile pulled from the cloud, last-write-wins by revision. Applied
+/// before tasks, as account metadata. Seeds carry an ancient revision, so a
+/// fresh installation cannot replace profiles customized on another device.
+///
+/// There is no deletion to consider: all four rows exist on every device from
+/// first launch, which is why these never needed tombstones.
+pub fn apply_remote(conn: &Connection, incoming: &PriorityProfile) -> rusqlite::Result<()> {
+    if !VALUES.contains(&incoming.priority) {
+        return Err(invalid("A priority is one of 1 to 4"));
+    }
+    validate(&ProfileInput {
+        name: incoming.name.clone(),
+        color: incoming.color.clone(),
+        sound: incoming.sound.clone(),
+        volume: incoming.volume,
+        ramp: incoming.ramp,
+        notification_style: incoming.notification_style.clone(),
+        repeat_minutes: incoming.repeat_minutes,
+    })?;
+    let revision = chrono::DateTime::parse_from_rfc3339(&incoming.updated_at)
+        .map_err(|_| invalid("Invalid priority revision"))?;
+    let current: Option<String> = conn
+        .query_row(
+            "SELECT updated_at FROM priority_profiles WHERE priority = ?1",
+            [incoming.priority],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if let Some(updated) = current {
+        let old = chrono::DateTime::parse_from_rfc3339(&updated)
+            .map_err(|_| invalid("Invalid local priority revision"))?;
+        if revision <= old {
+            return Ok(());
+        }
+    }
+    conn.execute(
+        "INSERT INTO priority_profiles (priority, name, color, sound, volume, ramp,
+                                        notification_style, repeat_minutes, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+         ON CONFLICT(priority) DO UPDATE SET
+            name = excluded.name, color = excluded.color, sound = excluded.sound,
+            volume = excluded.volume, ramp = excluded.ramp,
+            notification_style = excluded.notification_style,
+            repeat_minutes = excluded.repeat_minutes, updated_at = excluded.updated_at",
+        params![
+            incoming.priority,
+            incoming.name.trim(),
+            incoming.color.to_lowercase(),
+            incoming.sound,
+            incoming.volume,
+            incoming.ramp,
+            incoming.notification_style,
+            incoming.repeat_minutes,
+            incoming.updated_at,
+        ],
+    )?;
+    Ok(())
+}
+
+/// The settings keys holding each priority's own custom reminder sound. The
+/// audio itself never leaves the device that loaded it — base64 in a synced row
+/// would push up to a megabyte on every profile edit — so only the *choice* of
+/// `"custom"` travels, and the account-switch paths have to clear these bytes
+/// themselves. Mirrors `customKeysFor` in `lib/sound.ts`.
+pub fn custom_sound_keys() -> Vec<String> {
+    VALUES
+        .iter()
+        .flat_map(|priority| {
+            [
+                format!("reminder_sound_data_p{priority}"),
+                format!("reminder_sound_name_p{priority}"),
+            ]
+        })
+        .collect()
 }
 
 /// Has the user named or recolored this priority? Mirrors `isCustomized` in
