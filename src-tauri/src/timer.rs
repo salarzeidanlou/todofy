@@ -12,19 +12,63 @@
 
 use crate::db::{new_uuid, Db};
 use crate::models::{ActiveTimer, Pomodoro, SessionLog};
-use chrono::{DateTime, Local};
+use chrono::DateTime;
+#[cfg(not(test))]
+use chrono::Local;
 use rusqlite::{params, Connection, OptionalExtension};
 use tauri::{AppHandle, Emitter, Manager, State};
 
+/// Every timestamp in this module is read through here. Elapsed time is a
+/// difference of two whole-second reads, so a test that seeds "10 minutes ago"
+/// and then asserts on 600 is really asserting that both reads land in the same
+/// second — which stops being true if the thread is descheduled in between.
+/// Tests freeze this instead (see `test_clock`).
+#[cfg(not(test))]
+fn now() -> DateTime<Local> {
+    Local::now()
+}
+#[cfg(test)]
+use test_clock::now;
+
 fn now_iso() -> String {
-    Local::now().to_rfc3339()
+    now().to_rfc3339()
 }
 
 /// Whole seconds elapsed since an RFC3339 instant (never negative).
 fn secs_since(iso: &str) -> i64 {
     DateTime::parse_from_rfc3339(iso)
-        .map(|dt| (Local::now().timestamp() - dt.timestamp()).max(0))
+        .map(|dt| (now().timestamp() - dt.timestamp()).max(0))
         .unwrap_or(0)
+}
+
+/// A clock the tests can stop. Frozen per-thread, and each test gets its own
+/// thread, so a frozen clock never leaks into a test running in parallel.
+#[cfg(test)]
+mod test_clock {
+    use chrono::{DateTime, Local};
+    use std::cell::Cell;
+
+    thread_local! {
+        static FROZEN: Cell<Option<DateTime<Local>>> = const { Cell::new(None) };
+    }
+
+    pub fn now() -> DateTime<Local> {
+        FROZEN.with(|f| f.get()).unwrap_or_else(Local::now)
+    }
+
+    /// Holds the clock still until dropped.
+    pub struct Frozen;
+
+    impl Drop for Frozen {
+        fn drop(&mut self) {
+            FROZEN.with(|f| f.set(None));
+        }
+    }
+
+    pub fn freeze() -> Frozen {
+        FROZEN.with(|f| f.set(Some(Local::now())));
+        Frozen
+    }
 }
 
 /// Safety cap: nothing tracks (or counts overtime) longer than this without
@@ -697,11 +741,14 @@ mod stopwatch_tests {
     use crate::db;
     use chrono::Duration;
 
-    /// One task with a session running since `mins_ago` minutes ago.
-    fn seed(mins_ago: i64) -> Connection {
+    /// One task with a session running since `mins_ago` minutes ago, on a
+    /// stopped clock. Hold the returned guard for as long as the test asserts
+    /// on elapsed seconds; dropping it early lets wall time move again.
+    fn seed(mins_ago: i64) -> (Connection, test_clock::Frozen) {
+        let clock = test_clock::freeze();
         let conn = Connection::open_in_memory().unwrap();
         db::init(&conn).unwrap();
-        let started = (Local::now() - Duration::minutes(mins_ago)).to_rfc3339();
+        let started = (now() - Duration::minutes(mins_ago)).to_rfc3339();
         conn.execute(
             "INSERT INTO tasks (id, title, created_at, updated_at)
              VALUES ('t1', 'write it up', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
@@ -714,7 +761,7 @@ mod stopwatch_tests {
             params![started],
         )
         .unwrap();
-        conn
+        (conn, clock)
     }
 
     fn session(conn: &Connection) -> (Option<String>, i64, Option<i64>, Option<String>) {
@@ -728,7 +775,7 @@ mod stopwatch_tests {
 
     #[test]
     fn pausing_banks_the_running_segment_and_stops_the_clock() {
-        let conn = seed(10);
+        let (conn, _clock) = seed(10);
         pause_open_session(&conn).unwrap();
 
         let (resumed_at, accumulated, seconds, end_at) = session(&conn);
@@ -748,7 +795,7 @@ mod stopwatch_tests {
     /// A double click, or the tray and window both firing.
     #[test]
     fn pausing_twice_does_not_double_count() {
-        let conn = seed(10);
+        let (conn, _clock) = seed(10);
         pause_open_session(&conn).unwrap();
         pause_open_session(&conn).unwrap();
         assert_eq!(session(&conn).1, 600);
@@ -756,7 +803,7 @@ mod stopwatch_tests {
 
     #[test]
     fn stopping_a_paused_session_keeps_its_banked_time() {
-        let conn = seed(10);
+        let (conn, _clock) = seed(10);
         pause_open_session(&conn).unwrap();
         close_open_sessions(&conn).unwrap();
 
@@ -769,7 +816,7 @@ mod stopwatch_tests {
     /// Time spent paused is not work time.
     #[test]
     fn paused_time_is_excluded_from_the_recorded_duration() {
-        let conn = seed(30);
+        let (conn, _clock) = seed(30);
         // 10 minutes banked, paused for the other 20.
         conn.execute(
             "UPDATE time_sessions SET accumulated = 600, resumed_at = NULL WHERE id = 's1'",
@@ -782,7 +829,7 @@ mod stopwatch_tests {
 
     #[test]
     fn resuming_starts_a_fresh_segment_without_losing_the_bank() {
-        let conn = seed(10);
+        let (conn, _clock) = seed(10);
         pause_open_session(&conn).unwrap();
         conn.execute(
             "UPDATE time_sessions SET resumed_at = ?1 WHERE end_at IS NULL AND resumed_at IS NULL",
@@ -803,7 +850,7 @@ mod stopwatch_tests {
     /// Otherwise a long lunch break would close a session with minutes on it.
     #[test]
     fn the_stale_guard_ignores_time_spent_paused() {
-        let conn = seed(24 * 60);
+        let (conn, _clock) = seed(24 * 60);
         conn.execute(
             "UPDATE time_sessions SET accumulated = 300, resumed_at = NULL WHERE id = 's1'",
             [],
@@ -813,7 +860,7 @@ mod stopwatch_tests {
         assert_eq!(session(&conn).3, None, "a paused session cannot run away");
 
         // Still capped when actually running.
-        let conn = seed(24 * 60);
+        let (conn, _clock) = seed(24 * 60);
         close_stale_sessions(&conn).unwrap();
         assert_eq!(session(&conn).2, Some(MAX_SESSION_SECS));
     }
@@ -830,7 +877,7 @@ mod stopwatch_tests {
     /// Both clocks move together, or they drift apart.
     #[test]
     fn pomodoro_mode_binds_the_countdown_to_the_task() {
-        let conn = seed(0);
+        let (conn, _clock) = seed(0);
         crate::settings::write(&conn, "task_timer_mode", "pomodoro").unwrap();
 
         start_tracking(&conn, "t1").unwrap();
@@ -851,7 +898,7 @@ mod stopwatch_tests {
     /// Tracking a task must not hijack a break already running.
     #[test]
     fn tracker_mode_never_touches_the_pomodoro() {
-        let conn = seed(0);
+        let (conn, _clock) = seed(0);
         conn.execute(
             "UPDATE pomodoro SET phase = 'short', running = 1, start_at = ?1 WHERE id = 1",
             params![now_iso()],
@@ -870,6 +917,7 @@ mod stopwatch_tests {
     /// Upgrading mid-session must not silently stop the clock.
     #[test]
     fn migrating_an_open_session_leaves_it_running() {
+        let _clock = test_clock::freeze();
         let conn = Connection::open_in_memory().unwrap();
         db::init(&conn).unwrap();
         conn.execute(
@@ -895,7 +943,7 @@ mod stopwatch_tests {
             ",
         )
         .unwrap();
-        let started = (Local::now() - Duration::minutes(10)).to_rfc3339();
+        let started = (now() - Duration::minutes(10)).to_rfc3339();
         conn.execute(
             "INSERT INTO time_sessions (id, task_id, start_at, updated_at)
              VALUES ('s1', 't1', ?1, ?1)",
